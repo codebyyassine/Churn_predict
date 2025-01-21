@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/Yassine/Desktop/Workspace/school%20related/ML_PROJECT/churn_project/mlruns/321533087094298479/054b5103d1274733ac9263fd4dbd108a/artifacts
+end_time: 1737491874011
+entry_point_name: ''
+experiment_id: '321533087094298479'
+lifecycle_stage: active
+run_id: 054b5103d1274733ac9263fd4dbd108a
+run_name: lyrical-carp-233
+run_uuid: 054b5103d1274733ac9263fd4dbd108a
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1737491869155
+status: 3
+tags: []
+user_id: root

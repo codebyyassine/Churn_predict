@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/Yassine/Desktop/Workspace/school%20related/ML_PROJECT/churn_project/mlruns/321533087094298479/86e2ca6f3d754c59a8cb063a91e29191/artifacts
+end_time: 1737491499606
+entry_point_name: ''
+experiment_id: '321533087094298479'
+lifecycle_stage: active
+run_id: 86e2ca6f3d754c59a8cb063a91e29191
+run_name: funny-lark-104
+run_uuid: 86e2ca6f3d754c59a8cb063a91e29191
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1737491497784
+status: 3
+tags: []
+user_id: root

@@ -3,11 +3,14 @@ import numpy as np
 import pandas as pd
 from django.http import JsonResponse
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.permissions import IsAdminUser
+from rest_framework.authentication import BasicAuthentication
 import json
 from django.core.cache import cache
 from django.views.decorators.csrf import csrf_exempt
 import os
 from django.conf import settings
+from django.core.management import call_command
 
 # Define features directly
 numerical_features = [
@@ -27,6 +30,7 @@ scaler = pipeline["scaler"]
 le_geo = pipeline["label_encoder_geo"]
 le_gender = pipeline["label_encoder_gender"]
 feature_cols = numerical_features + categorical_features
+feature_importance = pipeline.get("feature_importance", [])
 
 # Add cache TTL constant (1 hour)
 CACHE_TTL = 60 * 60
@@ -35,6 +39,41 @@ def generate_cache_key(features):
     """Generate a consistent cache key from input features"""
     feature_str = json.dumps(features, sort_keys=True)
     return f"churn_pred_{feature_str}"
+
+@api_view(["POST"])
+@csrf_exempt
+@authentication_classes([BasicAuthentication])
+@permission_classes([IsAdminUser])
+def trigger_training(request):
+    """
+    API endpoint to trigger model training.
+    Requires admin authentication.
+    """
+    try:
+        # Call the training command
+        call_command('train_churn')
+        
+        # Reload the model after training
+        global model, scaler, le_geo, le_gender, feature_importance
+        with open(model_path, "rb") as f:
+            pipeline = pickle.load(f)
+            
+        model = pipeline["model"]
+        scaler = pipeline["scaler"]
+        le_geo = pipeline["label_encoder_geo"]
+        le_gender = pipeline["label_encoder_gender"]
+        feature_importance = pipeline.get("feature_importance", [])
+        
+        return JsonResponse({
+            "status": "success",
+            "message": "Model training completed successfully"
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            "status": "error",
+            "message": str(e)
+        }, status=500)
 
 @api_view(["POST"])
 @csrf_exempt
@@ -98,9 +137,10 @@ def predict_churn(request):
         prediction = model.predict(feature_array)[0]
         probability = model.predict_proba(feature_array)[0][1]
 
-        # Prepare result
+        # Prepare result with feature importance
         result = {
-            "churn_probability": float(probability)
+            "churn_probability": float(probability),
+            "feature_importance": feature_importance
         }
 
         # Cache the result

@@ -9,6 +9,7 @@ from sklearn.linear_model import LogisticRegression
 import pickle
 import mlflow
 import mlflow.sklearn
+from sklearn.metrics import classification_report, confusion_matrix
 
 class Command(BaseCommand):
     help = "Train churn model from Postgres data with basic cleaning."
@@ -95,14 +96,56 @@ class Command(BaseCommand):
         mlflow.set_experiment("Churn_Prediction")
         
         with mlflow.start_run():
-            # Train model
-            model = LogisticRegression(random_state=42)
+            # Train model with balanced class weights
+            model = LogisticRegression(
+                random_state=42,
+                class_weight='balanced',
+                max_iter=1000,
+                C=0.1  # Increase regularization
+            )
             model.fit(X_train, y_train)
 
             # Evaluate and log metrics
-            accuracy = model.score(X_test, y_test)
-            mlflow.log_metric("accuracy", accuracy)
-            self.stdout.write(self.style.SUCCESS(f"Validation Accuracy: {accuracy:.4f}"))
+            train_accuracy = model.score(X_train, y_train)
+            test_accuracy = model.score(X_test, y_test)
+            
+            # Get predictions
+            y_pred = model.predict(X_test)
+            
+            # Calculate and log detailed metrics
+            report = classification_report(y_test, y_pred, output_dict=True)
+            conf_matrix = confusion_matrix(y_test, y_pred)
+            
+            # Log metrics
+            mlflow.log_metric("train_accuracy", train_accuracy)
+            mlflow.log_metric("test_accuracy", test_accuracy)
+            mlflow.log_metric("precision_class1", report['1']['precision'])
+            mlflow.log_metric("recall_class1", report['1']['recall'])
+            mlflow.log_metric("f1_class1", report['1']['f1-score'])
+            
+            # Calculate and log feature importance
+            feature_importance = pd.DataFrame({
+                'feature': X.columns,
+                'importance': np.abs(model.coef_[0])
+            })
+            feature_importance = feature_importance.sort_values('importance', ascending=False)
+            
+            # Log feature importance
+            mlflow.log_dict(
+                feature_importance.to_dict(orient='records'),
+                "feature_importance.json"
+            )
+
+            self.stdout.write(self.style.SUCCESS(
+                f"\nModel Performance:\n"
+                f"Train Accuracy: {train_accuracy:.4f}\n"
+                f"Test Accuracy: {test_accuracy:.4f}\n"
+                f"Precision (Churn): {report['1']['precision']:.4f}\n"
+                f"Recall (Churn): {report['1']['recall']:.4f}\n"
+                f"F1-Score (Churn): {report['1']['f1-score']:.4f}\n"
+                f"\nTop 5 Important Features:\n"
+                f"{feature_importance.head().to_string()}"
+            ))
 
             # Log model to MLflow
             mlflow.sklearn.log_model(model, "churn_model")
@@ -110,11 +153,14 @@ class Command(BaseCommand):
             # Log important parameters
             mlflow.log_params({
                 "model_type": "LogisticRegression",
+                "class_weight": "balanced",
+                "max_iter": 1000,
+                "C": 0.1,
                 "test_size": 0.2,
                 "random_state": 42
             })
 
-        # 8. Save the trained pipeline
+        # Save the pipeline
         with open("churn_model.pkl", "wb") as f:
             pickle.dump(
                 {
@@ -124,7 +170,8 @@ class Command(BaseCommand):
                     "label_encoder_gender": le_gender,
                     "features": list(X.columns),
                     "numerical_features": numerical_features,
-                    "categorical_features": categorical_features
+                    "categorical_features": categorical_features,
+                    "feature_importance": feature_importance.to_dict(orient='records')
                 },
                 f
             )

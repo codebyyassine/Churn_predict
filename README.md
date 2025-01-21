@@ -45,11 +45,34 @@ The model uses the following features for prediction:
 
 ## API Usage
 
+### Authentication
+
+The API uses Basic Authentication for secure endpoints. To use authenticated endpoints:
+
+1. Create an admin user:
+```bash
+docker compose exec web python manage.py createsuperuser
+```
+
+2. Use the credentials in API requests:
+```bash
+# Example using curl with Basic Auth
+curl -X POST http://localhost:8000/api/train/ -u "username:password"
+```
+
+### Rate Limiting
+
+The API implements rate limiting to prevent abuse:
+- Anonymous users: 100 requests per day
+- Authenticated users: 1000 requests per day
+
 ### Prediction Endpoint
 
 ```http
 POST /api/predict/
 ```
+
+This endpoint is publicly accessible and does not require authentication.
 
 #### Request Body Example:
 ```json
@@ -71,6 +94,39 @@ POST /api/predict/
 ```json
 {
     "churn_probability": 0.245
+}
+```
+
+### Training Endpoint
+
+```http
+POST /api/train/
+```
+
+This endpoint triggers model retraining. It requires admin authentication using Basic Auth.
+
+#### Authentication Required
+- Basic Authentication
+- Admin privileges
+
+#### Request Example:
+```bash
+curl -X POST http://localhost:8000/api/train/ -u "admin:password"
+```
+
+#### Response Example (Success):
+```json
+{
+    "status": "success",
+    "message": "Model training completed successfully"
+}
+```
+
+#### Response Example (Error):
+```json
+{
+    "status": "error",
+    "message": "Error details..."
 }
 ```
 
@@ -110,7 +166,11 @@ Predictions are cached using Redis with a TTL of 1 hour to improve performance f
 
 To retrain the model with new data:
 ```bash
+# Using the CLI:
 docker compose exec web python manage.py train_churn
+
+# Using the API (requires admin authentication):
+curl -X POST http://localhost:8000/api/train/ -u "admin:password"
 ```
 
 To restart the web service:
@@ -125,3 +185,7 @@ The current model achieves approximately 82% validation accuracy on the test set
 ## Contributing
 
 Feel free to submit issues and enhancement requests.
+
+## License
+
+[Specify your license here]
