@@ -1,0 +1,11 @@
+Django
+djangorestframework
+mlflow
+numpy
+pandas
+psycopg2_binary
+scikit_learn
+celery
+django-redis
+sqlalchemy
+django-cors-headers==4.3.1

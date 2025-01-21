@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1736012239615
+current_stage: None
+description: ''
+last_updated_timestamp: 1736012239615
+name: Chrun_model
+run_id: 0ad88fb3afd84eb2a4e67c10b201d357
+run_link: ''
+source: file:///C:/Users/Yassine/Desktop/Workspace/school%20related/ML_PROJECT/churn_project/mlruns/321533087094298479/0ad88fb3afd84eb2a4e67c10b201d357/artifacts/churn_model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/Yassine/Desktop/Workspace/school%20related/ML_PROJECT/churn_project/mlruns/321533087094298479/0ad88fb3afd84eb2a4e67c10b201d357/artifacts/churn_model
+user_id: null
+version: 1

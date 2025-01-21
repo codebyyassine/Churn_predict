@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/Yassine/Desktop/Workspace/school%20related/ML_PROJECT/churn_project/mlruns/321533087094298479/0d0ad326c0d14d36be4c0be9d48ace71/artifacts
+end_time: 1737490639654
+entry_point_name: ''
+experiment_id: '321533087094298479'
+lifecycle_stage: active
+run_id: 0d0ad326c0d14d36be4c0be9d48ace71
+run_name: amusing-flea-58
+run_uuid: 0d0ad326c0d14d36be4c0be9d48ace71
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1737490634303
+status: 3
+tags: []
+user_id: root
