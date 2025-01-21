@@ -8,4 +8,12 @@ scikit_learn
 celery
 django-redis
 sqlalchemy
+matplotlib
+seaborn
+joblib
+python-dotenv
+tqdm
+plotly
+ipykernel
+jupyter
 django-cors-headers==4.3.1

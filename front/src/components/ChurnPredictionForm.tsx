@@ -23,31 +23,46 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "@/components/ui/use-toast"
+import { ApiService } from "@/lib/api"
 
 const formSchema = z.object({
-  credit_score: z.string().transform(Number).pipe(
-    z.number().min(0).max(1000)
-  ),
-  age: z.string().transform(Number).pipe(
-    z.number().min(18).max(120)
-  ),
-  tenure: z.string().transform(Number).pipe(
-    z.number().min(0)
-  ),
-  balance: z.string().transform(Number).pipe(
-    z.number().min(0)
-  ),
-  num_of_products: z.string().transform(Number).pipe(
-    z.number().min(0)
-  ),
-  has_cr_card: z.string().transform(Number),
-  is_active_member: z.string().transform(Number),
-  estimated_salary: z.string().transform(Number).pipe(
-    z.number().min(0)
-  ),
+  credit_score: z.string(),
+  age: z.string(),
+  tenure: z.string(),
+  balance: z.string(),
+  num_of_products: z.string(),
+  has_cr_card: z.string(),
+  is_active_member: z.string(),
+  estimated_salary: z.string(),
   geography: z.string(),
   gender: z.string(),
-})
+}).transform((data) => ({
+  credit_score: Number(data.credit_score),
+  age: Number(data.age),
+  tenure: Number(data.tenure),
+  balance: Number(data.balance),
+  num_of_products: Number(data.num_of_products),
+  has_cr_card: Boolean(Number(data.has_cr_card)),
+  is_active_member: Boolean(Number(data.is_active_member)),
+  estimated_salary: Number(data.estimated_salary),
+  geography: data.geography,
+  gender: data.gender,
+}));
+
+type FormInput = {
+  credit_score: string;
+  age: string;
+  tenure: string;
+  balance: string;
+  num_of_products: string;
+  has_cr_card: string;
+  is_active_member: string;
+  estimated_salary: string;
+  geography: string;
+  gender: string;
+};
+
+type FormValues = z.infer<typeof formSchema>;
 
 export function ChurnPredictionForm() {
   const [loading, setLoading] = useState(false)
@@ -56,7 +71,7 @@ export function ChurnPredictionForm() {
     featureImportance?: Array<{ feature: string; importance: number }>;
   } | null>(null)
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<FormInput>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       credit_score: "600",
@@ -72,43 +87,39 @@ export function ChurnPredictionForm() {
     },
   })
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: FormInput) {
     try {
       setLoading(true)
-      const response = await fetch("http://localhost:8000/api/predict", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(values),
-      })
+      const result = await ApiService.predictChurn({
+        credit_score: Number(values.credit_score),
+        age: Number(values.age),
+        tenure: Number(values.tenure),
+        balance: Number(values.balance),
+        num_of_products: Number(values.num_of_products),
+        has_cr_card: Boolean(Number(values.has_cr_card)),
+        is_active_member: Boolean(Number(values.is_active_member)),
+        estimated_salary: Number(values.estimated_salary),
+        geography: values.geography,
+        gender: values.gender,
+      });
 
-      if (!response.ok) {
-        throw new Error("Prediction failed")
-      }
-
-      const data = await response.json()
       setPrediction({
-        probability: data.churn_probability,
-        featureImportance: data.feature_importance,
+        probability: result.churn_probability,
+        featureImportance: result.feature_importance,
       })
       
-      const riskLevel = data.churn_probability > 0.5 ? "High" : data.churn_probability > 0.3 ? "Medium" : "Low"
-      const riskColor = data.churn_probability > 0.5 ? "red" : data.churn_probability > 0.3 ? "yellow" : "green"
+      const riskLevel = result.churn_probability > 0.5 ? "High" : result.churn_probability > 0.3 ? "Medium" : "Low"
+      const riskColor = result.churn_probability > 0.5 ? "red" : result.churn_probability > 0.3 ? "yellow" : "green"
       
       toast({
         title: "Prediction Complete",
-        description: (
-          <div className="space-y-2">
-            <p>Churn Risk: <span className={`font-bold text-${riskColor}-500`}>{riskLevel}</span></p>
-            <p>Probability: {(data.churn_probability * 100).toFixed(2)}%</p>
-          </div>
-        ),
+        description: `Churn Risk: ${riskLevel} (${(result.churn_probability * 100).toFixed(2)}%)`,
+        variant: riskColor === "red" ? "destructive" : undefined,
       })
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to get prediction. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to get prediction",
         variant: "destructive",
       })
     } finally {

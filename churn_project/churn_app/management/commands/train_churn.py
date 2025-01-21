@@ -3,16 +3,18 @@ from django.conf import settings
 import pandas as pd
 import numpy as np
 import psycopg2
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.linear_model import LogisticRegression
-import pickle
+from sklearn.ensemble import RandomForestClassifier
+import joblib
 import mlflow
 import mlflow.sklearn
 from sklearn.metrics import classification_report, confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 class Command(BaseCommand):
-    help = "Train churn model from Postgres data with basic cleaning."
+    help = "Train churn model from Postgres data with advanced preprocessing and RandomForest."
 
     def handle(self, *args, **options):
         # 1. Connect to DB and load data into DataFrame
@@ -27,30 +29,22 @@ class Command(BaseCommand):
         df = pd.read_sql(query, conn)
         conn.close()
 
-        # 2. Basic Data Cleaning
+        # 2. Check for missing values
+        missing_values = df.isnull().sum()
+        self.stdout.write("\nMissing Values:")
+        self.stdout.write(str(missing_values))
 
-        # a) Drop columns that are not predictive or duplicated
+        # Drop rows with missing values
+        df = df.dropna()
+        self.stdout.write(f"\nRows after dropping missing values: {len(df)}")
+
+        # 3. Remove unnecessary columns
         drop_cols = ["id", "row_number", "customer_id", "surname"]
         for col in drop_cols:
             if col in df.columns:
                 df.drop(col, axis=1, inplace=True)
 
-        # b) Handle missing values
-        df.fillna({
-            "credit_score": df["credit_score"].median() if "credit_score" in df.columns else 0,
-            "geography": "Unknown",
-            "gender": "Unknown",
-            "age": df["age"].median() if "age" in df.columns else 0,
-            "tenure": df["tenure"].median() if "tenure" in df.columns else 0,
-            "balance": df["balance"].median() if "balance" in df.columns else 0,
-            "num_of_products": df["num_of_products"].median() if "num_of_products" in df.columns else 0,
-            "has_cr_card": False,
-            "is_active_member": False,
-            "estimated_salary": df["estimated_salary"].median() if "estimated_salary" in df.columns else 0,
-            "exited": False
-        }, inplace=True)
-
-        # c) Convert boolean-like columns
+        # 4. Convert boolean-like columns to integers
         if "has_cr_card" in df.columns:
             df["has_cr_card"] = df["has_cr_card"].astype(int)
         if "is_active_member" in df.columns:
@@ -58,7 +52,7 @@ class Command(BaseCommand):
         if "exited" in df.columns:
             df["exited"] = df["exited"].astype(int)
 
-        # d) Separate numerical and categorical features
+        # 5. Separate numerical and categorical features
         numerical_features = [
             "credit_score", "age", "tenure", "balance", 
             "num_of_products", "has_cr_card", "is_active_member", 
@@ -66,7 +60,7 @@ class Command(BaseCommand):
         ]
         categorical_features = ["geography", "gender"]
 
-        # e) Encode categorical features
+        # 6. Encode categorical features
         le_geo = LabelEncoder()
         le_gender = LabelEncoder()
         
@@ -75,7 +69,7 @@ class Command(BaseCommand):
         if "gender" in df.columns:
             df["gender"] = le_gender.fit_transform(df["gender"])
 
-        # 3. Separate features and target
+        # 7. Separate features and target
         if "exited" not in df.columns:
             self.stdout.write(self.style.ERROR("No 'exited' column found in data."))
             return
@@ -83,36 +77,47 @@ class Command(BaseCommand):
         X = df.drop("exited", axis=1)
         y = df["exited"]
 
-        # 4. Scale numerical features only
+        # 8. Scale numerical features
         scaler = StandardScaler()
         X[numerical_features] = scaler.fit_transform(X[numerical_features])
 
-        # 5. Split into train/test
+        # 9. Split into train/test
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42
         )
 
-        # Before model training, set up MLflow
+        # Set up MLflow
         mlflow.set_experiment("Churn_Prediction")
         
         with mlflow.start_run():
-            # Train model with balanced class weights
-            model = LogisticRegression(
-                random_state=42,
-                class_weight='balanced',
-                max_iter=1000,
-                C=0.1  # Increase regularization
-            )
-            model.fit(X_train, y_train)
+            # 10. Define parameter grid for RandomForest
+            param_grid = {
+                'n_estimators': [100, 200],
+                'max_depth': [10, 20, None],
+                'min_samples_split': [2, 5],
+                'min_samples_leaf': [1, 2]
+            }
 
-            # Evaluate and log metrics
-            train_accuracy = model.score(X_train, y_train)
-            test_accuracy = model.score(X_test, y_test)
+            # 11. Perform GridSearch
+            grid_search = GridSearchCV(
+                RandomForestClassifier(random_state=42),
+                param_grid,
+                cv=5,
+                scoring='roc_auc',
+                n_jobs=-1
+            )
+
+            grid_search.fit(X_train, y_train)
             
-            # Get predictions
-            y_pred = model.predict(X_test)
+            # Get best model
+            best_rf = grid_search.best_estimator_
             
-            # Calculate and log detailed metrics
+            # Make predictions
+            y_pred = best_rf.predict(X_test)
+            
+            # Calculate metrics
+            train_accuracy = best_rf.score(X_train, y_train)
+            test_accuracy = best_rf.score(X_test, y_test)
             report = classification_report(y_test, y_pred, output_dict=True)
             conf_matrix = confusion_matrix(y_test, y_pred)
             
@@ -126,9 +131,16 @@ class Command(BaseCommand):
             # Calculate and log feature importance
             feature_importance = pd.DataFrame({
                 'feature': X.columns,
-                'importance': np.abs(model.coef_[0])
-            })
-            feature_importance = feature_importance.sort_values('importance', ascending=False)
+                'importance': best_rf.feature_importances_
+            }).sort_values('importance', ascending=False)
+            
+            # Create feature importance plot
+            plt.figure(figsize=(10, 6))
+            sns.barplot(data=feature_importance, x='importance', y='feature')
+            plt.title('Feature Importance')
+            plt.tight_layout()
+            plt.savefig('feature_importance.png')
+            mlflow.log_artifact('feature_importance.png')
             
             # Log feature importance
             mlflow.log_dict(
@@ -137,6 +149,8 @@ class Command(BaseCommand):
             )
 
             self.stdout.write(self.style.SUCCESS(
+                f"\nBest Parameters: {grid_search.best_params_}\n"
+                f"Best Cross-validation Score: {grid_search.best_score_:.4f}\n"
                 f"\nModel Performance:\n"
                 f"Train Accuracy: {train_accuracy:.4f}\n"
                 f"Test Accuracy: {test_accuracy:.4f}\n"
@@ -148,32 +162,28 @@ class Command(BaseCommand):
             ))
 
             # Log model to MLflow
-            mlflow.sklearn.log_model(model, "churn_model")
+            mlflow.sklearn.log_model(best_rf, "churn_model")
 
-            # Log important parameters
+            # Log parameters
             mlflow.log_params({
-                "model_type": "LogisticRegression",
-                "class_weight": "balanced",
-                "max_iter": 1000,
-                "C": 0.1,
+                "model_type": "RandomForestClassifier",
+                **grid_search.best_params_,
                 "test_size": 0.2,
                 "random_state": 42
             })
 
-        # Save the pipeline
-        with open("churn_model.pkl", "wb") as f:
-            pickle.dump(
-                {
-                    "model": model,
-                    "scaler": scaler,
-                    "label_encoder_geo": le_geo,
-                    "label_encoder_gender": le_gender,
-                    "features": list(X.columns),
-                    "numerical_features": numerical_features,
-                    "categorical_features": categorical_features,
-                    "feature_importance": feature_importance.to_dict(orient='records')
-                },
-                f
-            )
-
-        self.stdout.write(self.style.SUCCESS("Model training completed and saved as churn_model.pkl"))
+        # Save the model and preprocessing objects
+        model_data = {
+            'model': best_rf,
+            'scaler': scaler,
+            'label_encoder_geo': le_geo,
+            'label_encoder_gender': le_gender,
+            'features': list(X.columns),
+            'numerical_features': numerical_features,
+            'categorical_features': categorical_features,
+            'feature_importance': feature_importance.to_dict(orient='records'),
+            'best_params': grid_search.best_params_
+        }
+        
+        joblib.dump(model_data, 'final_model.joblib')
+        self.stdout.write(self.style.SUCCESS("Model training completed and saved as final_model.joblib"))

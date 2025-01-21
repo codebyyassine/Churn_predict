@@ -1,7 +1,23 @@
-from django.urls import path
-from .views import predict_churn, trigger_training
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from . import views
 
+# Create a router and register our viewsets with it
+router = DefaultRouter()
+router.register(r'users', views.UserViewSet, basename='user')
+router.register(r'customers', views.CustomerChurnViewSet, basename='customer')
+
+# The API URLs are now determined automatically by the router
 urlpatterns = [
-    path('predict', predict_churn, name='predict_churn'),
-    path('train', trigger_training, name='trigger_training'),
+    # Include the router URLs
+    path('', include(router.urls)),
+    
+    # Custom endpoints
+    path('predict/', views.predict_churn, name='predict_churn'),
+    path('train/', views.trigger_training, name='train_model'),
+    
+    # Bulk operations
+    path('customers/bulk/create/', views.bulk_create_customers, name='bulk_create_customers'),
+    path('customers/bulk/update/', views.bulk_update_customers, name='bulk_update_customers'),
+    path('customers/bulk/delete/', views.bulk_delete_customers, name='bulk_delete_customers'),
 ]

@@ -11,6 +11,11 @@ from django.views.decorators.csrf import csrf_exempt
 import os
 from django.conf import settings
 from django.core.management import call_command
+from rest_framework import viewsets, permissions, status
+from django.contrib.auth.models import User
+from .models import CustomerChurn
+from .serializers import UserSerializer, CustomerChurnSerializer
+from django.shortcuts import get_object_or_404
 
 # Define features directly
 numerical_features = [
@@ -77,8 +82,8 @@ def trigger_training(request):
 
 @api_view(["POST"])
 @csrf_exempt
-@authentication_classes([])  # Skip authentication
-@permission_classes([])      # Skip permissions
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
 def predict_churn(request):
     """
     Expects a JSON payload with customer features:
@@ -150,3 +155,131 @@ def predict_churn(request):
         
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
+
+# User ViewSet
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+    def destroy(self, request, *args, **kwargs):
+        user = self.get_object()
+        if user == request.user:
+            return Response(
+                {"error": "Cannot delete your own account"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().destroy(request, *args, **kwargs)
+
+# CustomerChurn ViewSet
+class CustomerChurnViewSet(viewsets.ModelViewSet):
+    queryset = CustomerChurn.objects.all()
+    serializer_class = CustomerChurnSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        queryset = CustomerChurn.objects.all()
+        
+        # Filter by geography
+        geography = self.request.query_params.get('geography', None)
+        if geography:
+            queryset = queryset.filter(geography=geography)
+        
+        # Filter by age range
+        min_age = self.request.query_params.get('min_age', None)
+        max_age = self.request.query_params.get('max_age', None)
+        if min_age:
+            queryset = queryset.filter(age__gte=min_age)
+        if max_age:
+            queryset = queryset.filter(age__lte=max_age)
+        
+        # Filter by credit score range
+        min_score = self.request.query_params.get('min_credit_score', None)
+        max_score = self.request.query_params.get('max_credit_score', None)
+        if min_score:
+            queryset = queryset.filter(credit_score__gte=min_score)
+        if max_score:
+            queryset = queryset.filter(credit_score__lte=max_score)
+        
+        # Filter by churn status
+        exited = self.request.query_params.get('exited', None)
+        if exited is not None:
+            queryset = queryset.filter(exited=exited.lower() == 'true')
+        
+        return queryset
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+# Bulk Operations for CustomerChurn
+@api_view(['POST'])
+@permission_classes([permissions.IsAdminUser])
+def bulk_create_customers(request):
+    if not isinstance(request.data, list):
+        return Response(
+            {"error": "Expected a list of customers"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    serializer = CustomerChurnSerializer(data=request.data, many=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAdminUser])
+def bulk_update_customers(request):
+    if not isinstance(request.data, list):
+        return Response(
+            {"error": "Expected a list of customers"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    updated_customers = []
+    for customer_data in request.data:
+        if 'id' not in customer_data:
+            return Response(
+                {"error": "Each customer must have an id"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        customer = get_object_or_404(CustomerChurn, id=customer_data['id'])
+        serializer = CustomerChurnSerializer(customer, data=customer_data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            updated_customers.append(serializer.data)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    return Response(updated_customers)
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAdminUser])
+def bulk_delete_customers(request):
+    if not isinstance(request.data, list):
+        return Response(
+            {"error": "Expected a list of customer IDs"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    CustomerChurn.objects.filter(id__in=request.data).delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)

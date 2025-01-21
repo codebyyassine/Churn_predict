@@ -43,7 +43,7 @@ The model uses the following features for prediction:
 - Geography
 - Gender
 
-## API Usage
+## API Documentation
 
 ### Authentication
 
@@ -66,16 +66,188 @@ The API implements rate limiting to prevent abuse:
 - Anonymous users: 100 requests per day
 - Authenticated users: 1000 requests per day
 
-### Prediction Endpoint
+### User Management API
+
+Requires admin authentication for all operations.
+
+#### List Users
+```http
+GET /api/users/
+Authorization: Basic <credentials>
+```
+
+#### Create User
+```http
+POST /api/users/
+Authorization: Basic <credentials>
+
+{
+    "username": "newuser",
+    "email": "user@example.com",
+    "password": "securepassword",
+    "first_name": "John",
+    "last_name": "Doe",
+    "is_staff": false
+}
+```
+
+#### Get User Details
+```http
+GET /api/users/{id}/
+Authorization: Basic <credentials>
+```
+
+#### Update User
+```http
+PUT /api/users/{id}/
+Authorization: Basic <credentials>
+
+{
+    "email": "newemail@example.com",
+    "first_name": "John",
+    "last_name": "Smith"
+}
+```
+
+#### Delete User
+```http
+DELETE /api/users/{id}/
+Authorization: Basic <credentials>
+```
+
+### Customer Management API
+
+#### List Customers
+```http
+GET /api/customers/
+```
+
+Supports filtering:
+```http
+# Filter by geography
+GET /api/customers/?geography=France
+
+# Filter by age range
+GET /api/customers/?min_age=30&max_age=40
+
+# Filter by credit score
+GET /api/customers/?min_credit_score=600&max_credit_score=800
+
+# Filter by churn status
+GET /api/customers/?exited=true
+```
+
+#### Create Customer
+```http
+POST /api/customers/
+Authorization: Basic <credentials>
+
+{
+    "credit_score": 600,
+    "age": 40,
+    "tenure": 3,
+    "balance": 60000,
+    "num_of_products": 2,
+    "has_cr_card": true,
+    "is_active_member": true,
+    "estimated_salary": 100000,
+    "geography": "France",
+    "gender": "Female",
+    "exited": false
+}
+```
+
+#### Get Customer Details
+```http
+GET /api/customers/{id}/
+```
+
+#### Update Customer
+```http
+PUT /api/customers/{id}/
+Authorization: Basic <credentials>
+
+{
+    "credit_score": 650,
+    "balance": 65000
+}
+```
+
+#### Delete Customer
+```http
+DELETE /api/customers/{id}/
+Authorization: Basic <credentials>
+```
+
+### Bulk Operations API
+
+#### Bulk Create Customers
+```http
+POST /api/customers/bulk/create/
+Authorization: Basic <credentials>
+
+[
+    {
+        "credit_score": 600,
+        "age": 40,
+        "tenure": 3,
+        "balance": 60000,
+        "num_of_products": 2,
+        "has_cr_card": true,
+        "is_active_member": true,
+        "estimated_salary": 100000,
+        "geography": "France",
+        "gender": "Female",
+        "exited": false
+    },
+    {
+        "credit_score": 700,
+        "age": 35,
+        "tenure": 5,
+        "balance": 45000,
+        "num_of_products": 1,
+        "has_cr_card": true,
+        "is_active_member": true,
+        "estimated_salary": 85000,
+        "geography": "Germany",
+        "gender": "Male",
+        "exited": false
+    }
+]
+```
+
+#### Bulk Update Customers
+```http
+POST /api/customers/bulk/update/
+Authorization: Basic <credentials>
+
+[
+    {
+        "id": 1,
+        "credit_score": 650,
+        "balance": 65000
+    },
+    {
+        "id": 2,
+        "credit_score": 750,
+        "balance": 50000
+    }
+]
+```
+
+#### Bulk Delete Customers
+```http
+POST /api/customers/bulk/delete/
+Authorization: Basic <credentials>
+
+[1, 2, 3]  // List of customer IDs to delete
+```
+
+### Prediction API
 
 ```http
 POST /api/predict/
-```
 
-This endpoint is publicly accessible and does not require authentication.
-
-#### Request Body Example:
-```json
 {
     "credit_score": 600,
     "age": 40,
@@ -90,31 +262,32 @@ This endpoint is publicly accessible and does not require authentication.
 }
 ```
 
-#### Response Example:
+Response:
 ```json
 {
-    "churn_probability": 0.245
+    "churn_probability": 0.245,
+    "feature_importance": [
+        {
+            "feature": "age",
+            "importance": 0.23
+        },
+        {
+            "feature": "balance",
+            "importance": 0.18
+        }
+        // ... other features
+    ]
 }
 ```
 
-### Training Endpoint
+### Training API
 
 ```http
 POST /api/train/
+Authorization: Basic <credentials>
 ```
 
-This endpoint triggers model retraining. It requires admin authentication using Basic Auth.
-
-#### Authentication Required
-- Basic Authentication
-- Admin privileges
-
-#### Request Example:
-```bash
-curl -X POST http://localhost:8000/api/train/ -u "admin:password"
-```
-
-#### Response Example (Success):
+Response (Success):
 ```json
 {
     "status": "success",
@@ -122,11 +295,31 @@ curl -X POST http://localhost:8000/api/train/ -u "admin:password"
 }
 ```
 
-#### Response Example (Error):
+Response (Error):
 ```json
 {
     "status": "error",
     "message": "Error details..."
+}
+```
+
+### Error Responses
+
+The API returns appropriate HTTP status codes:
+
+- 200: Success
+- 201: Created successfully
+- 204: Deleted successfully
+- 400: Bad request (invalid data)
+- 401: Unauthorized (authentication required)
+- 403: Forbidden (insufficient permissions)
+- 404: Not found
+- 500: Server error
+
+Error Response Format:
+```json
+{
+    "error": "Error message description"
 }
 ```
 
@@ -146,6 +339,92 @@ docker compose up -d
 ```bash
 docker compose exec web python manage.py train_churn
 ```
+
+## Database Migration and Setup
+
+Note: The `customer_churn` table is automatically created by the initialization scripts, so we'll skip the churn_app migrations.
+
+1. Apply only Django system migrations (skipping churn_app):
+```bash
+# Apply migrations for each app separately, excluding churn_app
+docker compose exec web python manage.py migrate auth
+docker compose exec web python manage.py migrate admin
+docker compose exec web python manage.py migrate contenttypes
+docker compose exec web python manage.py migrate sessions
+
+# Mark churn_app migrations as applied without running them
+docker compose exec web python manage.py migrate churn_app --fake
+```
+
+2. Create a superuser for admin access:
+```bash
+docker compose exec web python manage.py createsuperuser
+```
+
+3. Verify database setup:
+```bash
+# Check tables
+docker compose exec db psql -U postgres -d churn_db -c "\dt"
+
+# Check data
+docker compose exec db psql -U postgres -d churn_db -c "SELECT COUNT(*) FROM customer_churn;"
+```
+
+### Troubleshooting Database Issues
+
+If you encounter database issues:
+
+1. Check container logs:
+```bash
+docker compose logs db
+```
+
+2. If migrations are in an inconsistent state:
+```bash
+# Fake the initial migration
+docker compose exec web python manage.py migrate churn_app zero --fake
+docker compose exec web python manage.py migrate churn_app --fake
+
+# If that doesn't work, try resetting migrations:
+docker compose exec web python manage.py migrate churn_app zero
+docker compose exec web python manage.py migrate churn_app --fake-initial
+```
+
+3. For a complete reset (if needed):
+```bash
+# Remove all volumes and containers
+docker compose down -v
+
+# Start fresh
+docker compose up -d
+
+# Apply migrations (skipping churn_app)
+docker compose exec web python manage.py migrate auth
+docker compose exec web python manage.py migrate admin
+docker compose exec web python manage.py migrate contenttypes
+docker compose exec web python manage.py migrate sessions
+docker compose exec web python manage.py migrate churn_app --fake
+```
+
+Note: The project includes initialization scripts that automatically:
+- Create the database (churn_db)
+- Create required tables
+- Load initial data from CSV
+
+To manually reload the data:
+```bash
+docker compose restart db
+```
+
+Common Errors:
+1. `relation "customer_churn" already exists`:
+   - This happens when the table is already created by the initialization scripts
+   - You can safely ignore this error if the table structure is correct
+   - If you need to recreate the table, use the reset commands above
+
+2. `permission denied to create database`:
+   - Check if the postgres user has the right permissions
+   - Verify the database credentials in settings.py match docker-compose.yml
 
 ## Model Training
 

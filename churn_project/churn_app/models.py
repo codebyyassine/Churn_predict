@@ -1,8 +1,8 @@
 from django.db import models
 
 class CustomerChurn(models.Model):
+    customer_id = models.IntegerField(primary_key=True)
     row_number = models.IntegerField(null=True, blank=True)
-    customer_id = models.IntegerField(null=True, blank=True)
     surname = models.CharField(max_length=50, null=True, blank=True)
     credit_score = models.IntegerField(null=True, blank=True)
     geography = models.CharField(max_length=50, null=True, blank=True)
