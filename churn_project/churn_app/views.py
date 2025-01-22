@@ -142,11 +142,11 @@ def get_model_metrics(request):
         best_metrics = None
         
         if latest_metrics_path.exists():
-            with open(latest_metrics_path, 'r') as f:
+            with open(latest_metrics_path, 'r', encoding='utf-8-sig') as f:
                 latest_metrics = json.load(f)
         
         if best_metrics_path.exists():
-            with open(best_metrics_path, 'r') as f:
+            with open(best_metrics_path, 'r', encoding='utf-8-sig') as f:
                 best_metrics = json.load(f)
         
         return JsonResponse({

@@ -33,7 +33,7 @@ class Command(BaseCommand):
         best_test_accuracy = 0
         
         if best_metrics_path.exists():
-            with open(best_metrics_path, 'r') as f:
+            with open(best_metrics_path, 'r', encoding='utf-8-sig') as f:
                 best_metrics = json.load(f)
                 best_test_accuracy = best_metrics.get('test_accuracy', 0)
 
@@ -184,17 +184,51 @@ class Command(BaseCommand):
             # Save latest model and metrics
             latest_model_path = models_dir / "latest_model.joblib"
             latest_metrics_path = models_dir / "latest_metrics.json"
+            best_model_path = models_dir / "best_model.joblib"
+            best_metrics_path = models_dir / "best_metrics.json"
             
-            joblib.dump(best_rf, latest_model_path)
-            with open(latest_metrics_path, 'w') as f:
+            # Save latest model and metrics
+            joblib.dump({
+                'model': best_rf,
+                'scaler': scaler,
+                'label_encoder_geo': le_geo,
+                'label_encoder_gender': le_gender,
+                'features': list(X.columns),
+                'numerical_features': numerical_features,
+                'categorical_features': categorical_features,
+            }, latest_model_path)
+            
+            with open(latest_metrics_path, 'w', encoding='utf-8') as f:
                 json.dump(metrics_data, f)
 
             # Update best model if current model is better
             if test_accuracy > best_test_accuracy:
-                joblib.dump(best_rf, best_model_path)
-                with open(best_metrics_path, 'w') as f:
+                # Save best model with all components
+                joblib.dump({
+                    'model': best_rf,
+                    'scaler': scaler,
+                    'label_encoder_geo': le_geo,
+                    'label_encoder_gender': le_gender,
+                    'features': list(X.columns),
+                    'numerical_features': numerical_features,
+                    'categorical_features': categorical_features,
+                }, best_model_path)
+                
+                # Save best metrics
+                with open(best_metrics_path, 'w', encoding='utf-8') as f:
                     json.dump(metrics_data, f)
+                    
                 self.stdout.write(self.style.SUCCESS("\nNew best model saved!"))
+            else:
+                # If not the best model, keep existing best metrics
+                if best_metrics_path.exists():
+                    with open(best_metrics_path, 'r', encoding='utf-8-sig') as f:
+                        best_metrics = json.load(f)
+                else:
+                    # If no best metrics exist yet, use current metrics as best
+                    best_metrics = metrics_data
+                    with open(best_metrics_path, 'w', encoding='utf-8') as f:
+                        json.dump(metrics_data, f)
 
             # Log metrics to MLflow
             mlflow.log_metric("train_accuracy", train_accuracy)
