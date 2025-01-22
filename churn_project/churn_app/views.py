@@ -353,56 +353,193 @@ class CustomerChurnViewSet(viewsets.ModelViewSet):
 @api_view(['POST'])
 @permission_classes([permissions.IsAdminUser])
 def bulk_create_customers(request):
-    if not isinstance(request.data, list):
+    """
+    Bulk create customers with validation and error handling.
+    Expects a list of customer data in the request body.
+    """
+    try:
+        if not isinstance(request.data, list):
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Expected a list of customers",
+                    "data": None
+                }, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if len(request.data) > 1000:  # Limit bulk operations
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Cannot process more than 1000 customers at once",
+                    "data": None
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = CustomerChurnSerializer(data=request.data, many=True)
+        if serializer.is_valid():
+            customers = serializer.save()
+            return Response(
+                {
+                    "status": "success",
+                    "message": f"Successfully created {len(customers)} customers",
+                    "data": serializer.data
+                },
+                status=status.HTTP_201_CREATED
+            )
         return Response(
-            {"error": "Expected a list of customers"}, 
+            {
+                "status": "error",
+                "message": "Validation error",
+                "data": serializer.errors
+            },
             status=status.HTTP_400_BAD_REQUEST
         )
-    
-    serializer = CustomerChurnSerializer(data=request.data, many=True)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response(
+            {
+                "status": "error",
+                "message": str(e),
+                "data": None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAdminUser])
 def bulk_update_customers(request):
-    if not isinstance(request.data, list):
-        return Response(
-            {"error": "Expected a list of customers"}, 
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    updated_customers = []
-    for customer_data in request.data:
-        if 'id' not in customer_data:
+    """
+    Bulk update customers with validation and error handling.
+    Expects a list of customer data with IDs in the request body.
+    """
+    try:
+        if not isinstance(request.data, list):
             return Response(
-                {"error": "Each customer must have an id"}, 
+                {
+                    "status": "error",
+                    "message": "Expected a list of customers",
+                    "data": None
+                }, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        customer = get_object_or_404(CustomerChurn, id=customer_data['id'])
-        serializer = CustomerChurnSerializer(customer, data=customer_data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            updated_customers.append(serializer.data)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    return Response(updated_customers)
+        if len(request.data) > 1000:  # Limit bulk operations
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Cannot process more than 1000 customers at once",
+                    "data": None
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        updated_customers = []
+        errors = []
+        
+        for customer_data in request.data:
+            if 'id' not in customer_data:
+                errors.append({
+                    "error": "Missing ID",
+                    "data": customer_data
+                })
+                continue
+            
+            try:
+                customer = get_object_or_404(CustomerChurn, id=customer_data['id'])
+                serializer = CustomerChurnSerializer(customer, data=customer_data, partial=True)
+                if serializer.is_valid():
+                    serializer.save()
+                    updated_customers.append(serializer.data)
+                else:
+                    errors.append({
+                        "id": customer_data['id'],
+                        "errors": serializer.errors
+                    })
+            except CustomerChurn.DoesNotExist:
+                errors.append({
+                    "error": f"Customer with ID {customer_data['id']} not found",
+                    "data": customer_data
+                })
+        
+        response_data = {
+            "status": "success" if not errors else "partial_success",
+            "message": f"Updated {len(updated_customers)} customers",
+            "data": {
+                "updated": updated_customers,
+                "errors": errors if errors else None
+            }
+        }
+        
+        return Response(
+            response_data,
+            status=status.HTTP_200_OK if not errors else status.HTTP_207_MULTI_STATUS
+        )
+    except Exception as e:
+        return Response(
+            {
+                "status": "error",
+                "message": str(e),
+                "data": None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAdminUser])
 def bulk_delete_customers(request):
-    if not isinstance(request.data, list):
+    """
+    Bulk delete customers with validation and error handling.
+    Expects a list of customer IDs in the request body.
+    """
+    try:
+        if not isinstance(request.data, list):
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Expected a list of customer IDs",
+                    "data": None
+                }, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if len(request.data) > 1000:  # Limit bulk operations
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Cannot process more than 1000 customers at once",
+                    "data": None
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get the count of existing customers before deletion
+        existing_count = CustomerChurn.objects.filter(customer_id__in=request.data).count()
+        
+        # Perform deletion
+        deleted_count = CustomerChurn.objects.filter(customer_id__in=request.data).delete()[0]
+        
         return Response(
-            {"error": "Expected a list of customer IDs"}, 
-            status=status.HTTP_400_BAD_REQUEST
+            {
+                "status": "success",
+                "message": f"Successfully deleted {deleted_count} customers",
+                "data": {
+                    "deleted_count": deleted_count,
+                    "not_found_count": len(request.data) - existing_count
+                }
+            },
+            status=status.HTTP_200_OK
         )
-    
-    CustomerChurn.objects.filter(id__in=request.data).delete()
-    return Response(status=status.HTTP_204_NO_CONTENT)
+    except Exception as e:
+        return Response(
+            {
+                "status": "error",
+                "message": str(e),
+                "data": None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['GET'])
 def get_dashboard_stats(request):
