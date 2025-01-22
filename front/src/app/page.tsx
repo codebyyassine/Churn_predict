@@ -2,6 +2,7 @@
 
 import { CustomerList } from "@/components/CustomerList"
 import { ChurnPredictionForm } from "@/components/ChurnPredictionForm"
+import { AdminPanel } from "@/components/AdminPanel"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function Home() {
@@ -14,6 +15,7 @@ export default function Home() {
           <TabsList>
             <TabsTrigger value="customers">Customer Management</TabsTrigger>
             <TabsTrigger value="prediction">Churn Prediction</TabsTrigger>
+            <TabsTrigger value="admin">Admin Panel</TabsTrigger>
           </TabsList>
           
           <TabsContent value="customers">
@@ -24,6 +26,10 @@ export default function Home() {
             <div className="max-w-2xl mx-auto">
               <ChurnPredictionForm />
             </div>
+          </TabsContent>
+
+          <TabsContent value="admin">
+            <AdminPanel />
           </TabsContent>
         </Tabs>
       </div>

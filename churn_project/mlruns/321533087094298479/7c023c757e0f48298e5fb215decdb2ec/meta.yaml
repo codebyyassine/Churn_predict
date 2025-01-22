@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/Yassine/Desktop/Workspace/school%20related/ML_PROJECT/churn_project/mlruns/321533087094298479/7c023c757e0f48298e5fb215decdb2ec/artifacts
+end_time: 1737505259493
+entry_point_name: ''
+experiment_id: '321533087094298479'
+lifecycle_stage: active
+run_id: 7c023c757e0f48298e5fb215decdb2ec
+run_name: unleashed-yak-129
+run_uuid: 7c023c757e0f48298e5fb215decdb2ec
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1737505211055
+status: 3
+tags: []
+user_id: root

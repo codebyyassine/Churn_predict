@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/Yassine/Desktop/Workspace/school%20related/ML_PROJECT/churn_project/mlruns/321533087094298479/be6cf3e87bd14066bdac07a06f1a832d/artifacts
+end_time: 1737505669341
+entry_point_name: ''
+experiment_id: '321533087094298479'
+lifecycle_stage: active
+run_id: be6cf3e87bd14066bdac07a06f1a832d
+run_name: honorable-skunk-237
+run_uuid: be6cf3e87bd14066bdac07a06f1a832d
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1737505624328
+status: 3
+tags: []
+user_id: root
