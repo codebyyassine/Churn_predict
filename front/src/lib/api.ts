@@ -4,7 +4,7 @@ interface Credentials {
 }
 
 interface Customer {
-  id?: number;
+  customer_id?: number;
   credit_score: number;
   age: number;
   tenure: number;
@@ -16,6 +16,7 @@ interface Customer {
   geography: string;
   gender: string;
   exited?: boolean;
+  surname?: string;
 }
 
 interface PredictionResult {
@@ -28,11 +29,27 @@ interface PredictionResult {
 
 interface CustomerFilters {
   geography?: string;
+  gender?: string;
   min_age?: number;
   max_age?: number;
   min_credit_score?: number;
   max_credit_score?: number;
+  min_balance?: number;
+  max_balance?: number;
   exited?: boolean;
+  has_cr_card?: boolean;
+  is_active_member?: boolean;
+  search?: string;
+  ordering?: string;
+  page?: number;
+  page_size?: number;
+}
+
+interface PaginatedResponse<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
 }
 
 // Use Django API URL directly
@@ -40,6 +57,34 @@ const BASE_URL = 'http://localhost:8000/api';
 
 // Helper to ensure trailing slash
 const url = (path: string) => `${BASE_URL}${path}/`;
+
+// Helper to build query string from filters
+const buildQueryString = (filters?: CustomerFilters): string => {
+  if (!filters) return '';
+  
+  const params = new URLSearchParams();
+  
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '' && value !== null && value !== 'all') {
+      // Handle boolean values
+      if (typeof value === 'boolean') {
+        params.append(key, value.toString());
+      } else {
+        params.append(key, value.toString());
+      }
+    }
+  });
+  
+  // Add default pagination if not provided
+  if (!filters.page) {
+    params.append('page', '1');
+  }
+  if (!filters.page_size) {
+    params.append('page_size', '10');
+  }
+  
+  return params.toString();
+};
 
 export class ApiService {
   private static credentials: Credentials | null = null;
@@ -85,17 +130,9 @@ export class ApiService {
   }
 
   // Customer Management
-  static async getCustomers(filters?: CustomerFilters) {
-    const queryParams = new URLSearchParams();
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== '' && value !== 'all') {
-          queryParams.append(key, value.toString());
-        }
-      });
-    }
-
-    const response = await fetch(`${url('/customers')}?${queryParams}`, {
+  static async getCustomers(filters?: CustomerFilters): Promise<PaginatedResponse<Customer>> {
+    const queryString = buildQueryString(filters);
+    const response = await fetch(`${url('/customers')}?${queryString}`, {
       headers: this.getHeaders(),
     });
     
@@ -106,7 +143,7 @@ export class ApiService {
     return response.json();
   }
 
-  static async createCustomer(customerData: Omit<Customer, 'id'>) {
+  static async createCustomer(customerData: Omit<Customer, 'customer_id'>) {
     const response = await fetch(url('/customers'), {
       method: 'POST',
       headers: this.getHeaders(),
@@ -118,11 +155,11 @@ export class ApiService {
     return response.json();
   }
 
-  static async updateCustomer(id: number, customerData: Partial<Customer>) {
-    const response = await fetch(url(`/customers/${id}`), {
+  static async updateCustomer(customer_id: number, customerData: Partial<Customer>) {
+    const response = await fetch(url(`/customers/${customer_id}`), {
       method: 'PUT',
       headers: this.getHeaders(),
-      body: JSON.stringify(customerData),
+      body: JSON.stringify({ ...customerData, customer_id }),
     });
     if (!response.ok) {
       throw new Error(`Failed to update customer: ${response.statusText}`);
@@ -130,8 +167,8 @@ export class ApiService {
     return response.json();
   }
 
-  static async deleteCustomer(id: number) {
-    const response = await fetch(url(`/customers/${id}`), {
+  static async deleteCustomer(customer_id: number) {
+    const response = await fetch(url(`/customers/${customer_id}`), {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
@@ -142,7 +179,7 @@ export class ApiService {
   }
 
   // Bulk Operations
-  static async bulkCreateCustomers(customers: Omit<Customer, 'id'>[]) {
+  static async bulkCreateCustomers(customers: Omit<Customer, 'customer_id'>[]) {
     const response = await fetch(url('/customers/bulk/create'), {
       method: 'POST',
       headers: this.getHeaders(),
@@ -154,7 +191,7 @@ export class ApiService {
     return response.json();
   }
 
-  static async bulkUpdateCustomers(customers: (Partial<Customer> & { id: number })[]) {
+  static async bulkUpdateCustomers(customers: (Partial<Customer> & { customer_id: number })[]) {
     const response = await fetch(url('/customers/bulk/update'), {
       method: 'POST',
       headers: this.getHeaders(),
@@ -179,7 +216,7 @@ export class ApiService {
   }
 
   // Prediction
-  static async predictChurn(customerData: Omit<Customer, 'id' | 'exited'>): Promise<PredictionResult> {
+  static async predictChurn(customerData: Omit<Customer, 'customer_id' | 'exited' | 'surname'>): Promise<PredictionResult> {
     const response = await fetch(url('/predict'), {
       method: 'POST',
       headers: this.getHeaders(),

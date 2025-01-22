@@ -1,6 +1,6 @@
 # Customer Churn Prediction API
 
-A machine learning-powered API service that predicts customer churn probability using a trained logistic regression model. Built with Django, Docker, and MLflow for experiment tracking.
+A machine learning-powered API service that predicts customer churn probability using a trained Random Forest model. Built with Django, Docker, and MLflow for experiment tracking.
 
 ## Project Overview
 
@@ -14,16 +14,20 @@ This project provides a REST API endpoint that predicts the likelihood of custom
 - Docker containerization
 - MLflow experiment tracking
 - PostgreSQL database integration
+- Advanced filtering and pagination
+- Search functionality
+- Ordering capabilities
 
 ## Technical Stack
 
 - **Backend Framework**: Django + Django REST Framework
-- **Machine Learning**: scikit-learn
+- **Machine Learning**: scikit-learn (Random Forest)
 - **Database**: PostgreSQL
 - **Caching**: Redis
 - **Containerization**: Docker
 - **ML Experiment Tracking**: MLflow
-- **Key Libraries**: pandas, numpy, psycopg2
+- **Frontend**: Next.js + Tailwind CSS
+- **Key Libraries**: pandas, numpy, django-filter
 
 ## Model Features
 
@@ -48,8 +52,6 @@ The model uses the following features for prediction:
 ### Authentication
 
 The API uses Basic Authentication for secure endpoints. To use authenticated endpoints:
-
-1. Create an admin user:
 ```bash
 docker compose exec web python manage.py createsuperuser
 ```
@@ -65,6 +67,81 @@ curl -X POST http://localhost:8000/api/train/ -u "username:password"
 The API implements rate limiting to prevent abuse:
 - Anonymous users: 100 requests per day
 - Authenticated users: 1000 requests per day
+
+### Pagination
+
+All list endpoints support pagination with the following parameters:
+- `page`: Page number (default: 1)
+- `page_size`: Number of items per page (default: 10, max: 100)
+
+Example:
+```http
+GET /api/customers/?page=2&page_size=20
+```
+
+Response format:
+```json
+{
+    "count": 100,
+    "next": "http://localhost:8000/api/customers/?page=3",
+    "previous": "http://localhost:8000/api/customers/?page=1",
+    "results": [...]
+}
+```
+
+### Filtering
+
+The API supports various filtering options:
+
+#### Range Filters
+- `min_age` & `max_age`: Filter by age range
+- `min_credit_score` & `max_credit_score`: Filter by credit score range
+- `min_balance` & `max_balance`: Filter by balance range
+
+Example:
+```http
+GET /api/customers/?min_age=30&max_age=50&min_credit_score=600
+```
+
+#### Exact Filters
+- `geography`: Filter by country
+- `gender`: Filter by gender
+- `exited`: Filter by churn status
+- `has_cr_card`: Filter by credit card status
+- `is_active_member`: Filter by membership status
+
+Example:
+```http
+GET /api/customers/?geography=France&exited=true
+```
+
+### Search
+
+The API supports searching across multiple fields:
+- `surname`
+- `geography`
+- `gender`
+
+Example:
+```http
+GET /api/customers/?search=Smith
+```
+
+### Ordering
+
+Results can be ordered by the following fields:
+- `customer_id`
+- `age`
+- `credit_score`
+- `balance`
+- `estimated_salary`
+
+Use `-` prefix for descending order.
+
+Example:
+```http
+GET /api/customers/?ordering=-credit_score
+```
 
 ### User Management API
 
@@ -117,30 +194,43 @@ Authorization: Basic <credentials>
 
 ### Customer Management API
 
-#### List Customers
+#### List Customers (with filters)
 ```http
 GET /api/customers/
+
+# Example with multiple filters
+GET /api/customers/?min_age=30&max_age=50&geography=France&ordering=-balance&page=2&page_size=20
 ```
 
-Supports filtering:
-```http
-# Filter by geography
-GET /api/customers/?geography=France
-
-# Filter by age range
-GET /api/customers/?min_age=30&max_age=40
-
-# Filter by credit score
-GET /api/customers/?min_credit_score=600&max_credit_score=800
-
-# Filter by churn status
-GET /api/customers/?exited=true
+Response:
+```json
+{
+    "count": 150,
+    "next": "http://localhost:8000/api/customers/?page=3",
+    "previous": "http://localhost:8000/api/customers/?page=1",
+    "results": [
+        {
+            "customer_id": 15,
+            "credit_score": 619,
+            "age": 42,
+            "tenure": 2,
+            "balance": 0.0,
+            "num_of_products": 1,
+            "has_cr_card": true,
+            "is_active_member": true,
+            "estimated_salary": 101348.88,
+            "geography": "France",
+            "gender": "Female",
+            "exited": false
+        },
+        // ... more customers
+    ]
+}
 ```
 
 #### Create Customer
 ```http
 POST /api/customers/
-Authorization: Basic <credentials>
 
 {
     "credit_score": 600,
@@ -152,20 +242,13 @@ Authorization: Basic <credentials>
     "is_active_member": true,
     "estimated_salary": 100000,
     "geography": "France",
-    "gender": "Female",
-    "exited": false
+    "gender": "Female"
 }
-```
-
-#### Get Customer Details
-```http
-GET /api/customers/{id}/
 ```
 
 #### Update Customer
 ```http
 PUT /api/customers/{id}/
-Authorization: Basic <credentials>
 
 {
     "credit_score": 650,
@@ -176,7 +259,6 @@ Authorization: Basic <credentials>
 #### Delete Customer
 ```http
 DELETE /api/customers/{id}/
-Authorization: Basic <credentials>
 ```
 
 ### Bulk Operations API
@@ -254,8 +336,8 @@ POST /api/predict/
     "tenure": 3,
     "balance": 60000,
     "num_of_products": 2,
-    "has_cr_card": 1,
-    "is_active_member": 1,
+    "has_cr_card": true,
+    "is_active_member": true,
     "estimated_salary": 100000,
     "geography": "France",
     "gender": "Female"
@@ -335,7 +417,18 @@ git clone <repository-url>
 docker compose up -d
 ```
 
-3. Train the model:
+3. Install frontend dependencies:
+```bash
+cd front
+npm install
+```
+
+4. Start the frontend development server:
+```bash
+npm run dev
+```
+
+5. Train the model:
 ```bash
 docker compose exec web python manage.py train_churn
 ```
@@ -432,7 +525,7 @@ The model training pipeline includes:
 - Data loading from PostgreSQL
 - Basic data cleaning and preprocessing
 - Feature encoding and scaling
-- Model training with LogisticRegression
+- Model training with RandomForest
 - Performance evaluation
 - Model persistence
 - MLflow tracking
@@ -443,23 +536,27 @@ Predictions are cached using Redis with a TTL of 1 hour to improve performance f
 
 ## Development
 
-To retrain the model with new data:
+To retrain the model:
 ```bash
-# Using the CLI:
 docker compose exec web python manage.py train_churn
-
-# Using the API (requires admin authentication):
-curl -X POST http://localhost:8000/api/train/ -u "admin:password"
 ```
 
-To restart the web service:
+To restart services:
 ```bash
+# Restart Django
 docker compose restart web
+
+# Restart Next.js (in development)
+cd front && npm run dev
 ```
 
 ## Performance
 
-The current model achieves approximately 82% validation accuracy on the test set.
+The current Random Forest model achieves:
+- Validation accuracy: ~86%
+- Precision (Churn): ~80%
+- Recall (Churn): ~75%
+- F1-Score (Churn): ~77%
 
 ## Contributing
 
@@ -467,4 +564,4 @@ Feel free to submit issues and enhancement requests.
 
 ## License
 
-[Specify your license here]
+[MIT License](LICENSE)

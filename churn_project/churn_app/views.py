@@ -5,13 +5,16 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import IsAdminUser
 from rest_framework.authentication import BasicAuthentication
+from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 import json
 from django.core.cache import cache
 from django.views.decorators.csrf import csrf_exempt
 import os
 from django.conf import settings
 from django.core.management import call_command
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, filters
+from django_filters.rest_framework import DjangoFilterBackend, FilterSet, NumberFilter
 from django.contrib.auth.models import User
 from .models import CustomerChurn
 from .serializers import UserSerializer, CustomerChurnSerializer
@@ -171,41 +174,66 @@ class UserViewSet(viewsets.ModelViewSet):
             )
         return super().destroy(request, *args, **kwargs)
 
+# Custom pagination class
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+# Custom filter class
+class CustomerChurnFilter(FilterSet):
+    min_age = NumberFilter(field_name='age', lookup_expr='gte')
+    max_age = NumberFilter(field_name='age', lookup_expr='lte')
+    min_credit_score = NumberFilter(field_name='credit_score', lookup_expr='gte')
+    max_credit_score = NumberFilter(field_name='credit_score', lookup_expr='lte')
+    min_balance = NumberFilter(field_name='balance', lookup_expr='gte')
+    max_balance = NumberFilter(field_name='balance', lookup_expr='lte')
+
+    class Meta:
+        model = CustomerChurn
+        fields = {
+            'geography': ['exact'],
+            'gender': ['exact'],
+            'exited': ['exact'],
+            'has_cr_card': ['exact'],
+            'is_active_member': ['exact'],
+        }
+
 # CustomerChurn ViewSet
 class CustomerChurnViewSet(viewsets.ModelViewSet):
     queryset = CustomerChurn.objects.all()
     serializer_class = CustomerChurnSerializer
-    permission_classes = [permissions.AllowAny]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = CustomerChurnFilter
+    search_fields = ['surname', 'geography', 'gender']
+    ordering_fields = ['customer_id', 'age', 'credit_score', 'balance', 'estimated_salary']
+    ordering = ['customer_id']
 
     def get_queryset(self):
         queryset = CustomerChurn.objects.all()
         
-        # Filter by geography
-        geography = self.request.query_params.get('geography', None)
-        if geography:
-            queryset = queryset.filter(geography=geography)
+        # Handle custom range filters
+        min_age = self.request.query_params.get('min_age')
+        max_age = self.request.query_params.get('max_age')
+        min_credit_score = self.request.query_params.get('min_credit_score')
+        max_credit_score = self.request.query_params.get('max_credit_score')
+        min_balance = self.request.query_params.get('min_balance')
+        max_balance = self.request.query_params.get('max_balance')
         
-        # Filter by age range
-        min_age = self.request.query_params.get('min_age', None)
-        max_age = self.request.query_params.get('max_age', None)
         if min_age:
             queryset = queryset.filter(age__gte=min_age)
         if max_age:
             queryset = queryset.filter(age__lte=max_age)
-        
-        # Filter by credit score range
-        min_score = self.request.query_params.get('min_credit_score', None)
-        max_score = self.request.query_params.get('max_credit_score', None)
-        if min_score:
-            queryset = queryset.filter(credit_score__gte=min_score)
-        if max_score:
-            queryset = queryset.filter(credit_score__lte=max_score)
-        
-        # Filter by churn status
-        exited = self.request.query_params.get('exited', None)
-        if exited is not None:
-            queryset = queryset.filter(exited=exited.lower() == 'true')
-        
+        if min_credit_score:
+            queryset = queryset.filter(credit_score__gte=min_credit_score)
+        if max_credit_score:
+            queryset = queryset.filter(credit_score__lte=max_credit_score)
+        if min_balance:
+            queryset = queryset.filter(balance__gte=min_balance)
+        if max_balance:
+            queryset = queryset.filter(balance__lte=max_balance)
+            
         return queryset
 
     def create(self, request, *args, **kwargs):

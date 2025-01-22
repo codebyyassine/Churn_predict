@@ -27,7 +27,7 @@ import { ApiService } from "@/lib/api"
 
 const formSchema = z.object({
   credit_score: z.string().transform(Number).pipe(
-    z.number().min(300).max(850)
+    z.number().min(0).max(1000)
   ),
   age: z.string().transform(Number).pipe(
     z.number().min(18).max(120)
@@ -39,7 +39,7 @@ const formSchema = z.object({
     z.number().min(0)
   ),
   num_of_products: z.string().transform(Number).pipe(
-    z.number().min(1).max(4)
+    z.number().min(0)
   ),
   has_cr_card: z.boolean(),
   is_active_member: z.boolean(),
@@ -61,14 +61,25 @@ export function CustomerForm({ customer, onSuccess, onCancel }: CustomerFormProp
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: customer || {
+    defaultValues: customer ? {
+      credit_score: customer.credit_score?.toString() || "650",
+      age: customer.age?.toString() || "35",
+      tenure: customer.tenure?.toString() || "5",
+      balance: customer.balance?.toString() || "50000",
+      num_of_products: customer.num_of_products?.toString() || "1",
+      has_cr_card: customer.has_cr_card || false,
+      is_active_member: customer.is_active_member || false,
+      estimated_salary: customer.estimated_salary?.toString() || "75000",
+      geography: customer.geography || "France",
+      gender: customer.gender || "Female",
+    } : {
       credit_score: "650",
       age: "35",
       tenure: "5",
       balance: "50000",
       num_of_products: "1",
-      has_cr_card: true,
-      is_active_member: true,
+      has_cr_card: false,
+      is_active_member: false,
       estimated_salary: "75000",
       geography: "France",
       gender: "Female",
@@ -78,14 +89,24 @@ export function CustomerForm({ customer, onSuccess, onCancel }: CustomerFormProp
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       setLoading(true)
-      if (customer?.id) {
-        await ApiService.updateCustomer(customer.id, values)
+      const transformedValues = {
+        ...values,
+        credit_score: Number(values.credit_score),
+        age: Number(values.age),
+        tenure: Number(values.tenure),
+        balance: Number(values.balance),
+        num_of_products: Number(values.num_of_products),
+        estimated_salary: Number(values.estimated_salary),
+      }
+      
+      if (customer?.customer_id) {
+        await ApiService.updateCustomer(customer.customer_id, transformedValues)
         toast({
           title: "Success",
           description: "Customer updated successfully",
         })
       } else {
-        await ApiService.createCustomer(values)
+        await ApiService.createCustomer(transformedValues)
         toast({
           title: "Success",
           description: "Customer created successfully",
@@ -95,7 +116,7 @@ export function CustomerForm({ customer, onSuccess, onCancel }: CustomerFormProp
     } catch (error) {
       toast({
         title: "Error",
-        description: customer?.id ? "Failed to update customer" : "Failed to create customer",
+        description: customer?.customer_id ? "Failed to update customer" : "Failed to create customer",
         variant: "destructive",
       })
     } finally {
@@ -117,7 +138,7 @@ export function CustomerForm({ customer, onSuccess, onCancel }: CustomerFormProp
                   <Input placeholder="650" {...field} />
                 </FormControl>
                 <FormDescription>
-                  Score between 300-850
+                  Score between 0-1000
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -286,7 +307,7 @@ export function CustomerForm({ customer, onSuccess, onCancel }: CustomerFormProp
             Cancel
           </Button>
           <Button type="submit" disabled={loading}>
-            {loading ? "Saving..." : customer?.id ? "Update" : "Create"}
+            {loading ? "Saving..." : customer?.customer_id ? "Update" : "Create"}
           </Button>
         </div>
       </form>
