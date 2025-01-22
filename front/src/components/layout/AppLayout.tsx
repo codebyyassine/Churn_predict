@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation"
 import { ApiService } from "@/lib/api"
 import { Navbar } from "./Navbar"
 import { toast } from "@/components/ui/use-toast"
+import { Icons } from "@/lib/icons"
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -42,7 +43,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        <Icons.spinner className="h-8 w-8 animate-spin text-primary" />
       </div>
     )
   }
@@ -54,8 +55,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <main className="container py-6">
-        {children}
+      <main className="container mx-auto px-4 py-8 max-w-7xl">
+        <div className="rounded-lg border bg-card p-8 shadow-sm">
+          {children}
+        </div>
       </main>
     </div>
   )

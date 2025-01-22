@@ -22,6 +22,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
+import { Badge } from "@/components/ui/badge"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Icons } from "@/components/icons"
 
 interface User {
   id: number;
@@ -40,32 +45,18 @@ interface PaginatedResponse<T> {
 }
 
 interface TrainingMetrics {
-  train_accuracy?: number;
-  test_accuracy?: number;
-  precision_class1?: number;
-  recall_class1?: number;
-  f1_class1?: number;
-  feature_importance?: Array<{
-    feature: string;
-    importance: number;
-  }>;
-  best_params?: Record<string, any>;
-  training_details?: {
+  train_accuracy: number;
+  test_accuracy: number;
+  precision_class1: number;
+  recall_class1: number;
+  f1_class1: number;
+  feature_importance: Record<string, number>;
+  training_details: {
     total_samples: number;
-    training_samples: number;
-    test_samples: number;
     training_time: number;
     cross_val_scores: number[];
-    confusion_matrix: number[][];
-    class_distribution: Record<string, number>;
   };
-  model_info?: {
-    model_type: string;
-    n_estimators: number;
-    max_depth: string | number;
-    min_samples_split: number;
-    min_samples_leaf: number;
-  };
+  best_params: Record<string, any>;
 }
 
 export function AdminPanel() {
@@ -83,6 +74,7 @@ export function AdminPanel() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [trainingStatus, setTrainingStatus] = useState<'idle' | 'training' | 'completed' | 'error'>('idle')
   const [trainingMetrics, setTrainingMetrics] = useState<TrainingMetrics | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     loadUsers()
@@ -115,44 +107,18 @@ export function AdminPanel() {
     router.push("/login")
   }
 
-  async function handleTraining() {
+  const handleTraining = async () => {
+    setTrainingStatus('training')
+    setErrorMessage(null)
+    
     try {
-      setLoading(true)
-      setTrainingStatus('training')
-      setTrainingMetrics(null)
-      
-      const result = await ApiService.trainModel()
-      
-      if (result.status === 'success') {
-        setTrainingStatus('completed')
-        setTrainingMetrics({
-          train_accuracy: result.train_accuracy,
-          test_accuracy: result.test_accuracy,
-          precision_class1: result.precision_class1,
-          recall_class1: result.recall_class1,
-          f1_class1: result.f1_class1,
-          feature_importance: result.feature_importance,
-          best_params: result.best_params,
-          training_details: result.training_details,
-          model_info: result.model_info
-        })
-        
-        toast({
-          title: "Success",
-          description: "Model training completed successfully",
-        })
-      } else {
-        throw new Error(result.message || 'Training failed')
-      }
-    } catch (error) {
+      const metrics = await ApiService.trainModel()
+      setTrainingMetrics(metrics)
+      setTrainingStatus('completed')
+    } catch (err) {
+      console.error('Training failed:', err)
+      setErrorMessage(err instanceof Error ? err.message : 'An error occurred during training')
       setTrainingStatus('error')
-      toast({
-        title: "Error",
-        description: "Failed to trigger model training.",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -182,145 +148,152 @@ export function AdminPanel() {
     }
   }
 
+  const getAverageCrossValScore = (scores: number[]) => {
+    if (!scores.length) return 0
+    return scores.reduce((a, b) => a + b, 0) / scores.length
+  }
+
   const renderTrainingMetrics = () => {
     if (!trainingMetrics) return null;
 
     return (
-      <div className="space-y-6 mt-4">
-        {/* Training Progress Summary */}
-        <div className="p-4 bg-card rounded-lg">
-          <h4 className="font-semibold mb-2">Training Summary</h4>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p>Total Samples: {trainingMetrics.training_details?.total_samples}</p>
-              <p>Training Samples: {trainingMetrics.training_details?.training_samples}</p>
-              <p>Test Samples: {trainingMetrics.training_details?.test_samples}</p>
-            </div>
-            <div>
-              <p>Training Time: {trainingMetrics.training_details?.training_time.toFixed(2)}s</p>
-              <p>Model Type: {trainingMetrics.model_info?.model_type}</p>
-            </div>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">Model Management</h2>
+            <p className="text-sm text-muted-foreground">Train and monitor the churn prediction model</p>
           </div>
+          <Button 
+            onClick={handleTraining} 
+            disabled={trainingStatus === 'training'}
+            className="min-w-[120px]"
+          >
+            {trainingStatus === 'training' ? (
+              <>
+                <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
+                Training
+              </>
+            ) : (
+              'Train Model'
+            )}
+          </Button>
         </div>
 
-        {/* Class Distribution */}
-        {trainingMetrics.training_details?.class_distribution && (
-          <div className="p-4 bg-card rounded-lg">
-            <h4 className="font-semibold mb-2">Class Distribution</h4>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              {Object.entries(trainingMetrics.training_details.class_distribution).map(([key, value]) => (
-                <div key={key} className="flex justify-between">
-                  <span>Class {key}:</span>
-                  <span>{value} samples</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Model Performance */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 bg-card rounded-lg">
-            <h4 className="font-semibold mb-2">Model Performance</h4>
-            <div className="space-y-2 text-sm">
-              <p>Training Accuracy: {(trainingMetrics.train_accuracy! * 100).toFixed(2)}%</p>
-              <p>Test Accuracy: {(trainingMetrics.test_accuracy! * 100).toFixed(2)}%</p>
-              <p>Precision (Churn): {(trainingMetrics.precision_class1! * 100).toFixed(2)}%</p>
-              <p>Recall (Churn): {(trainingMetrics.recall_class1! * 100).toFixed(2)}%</p>
-              <p>F1 Score (Churn): {(trainingMetrics.f1_class1! * 100).toFixed(2)}%</p>
-            </div>
-          </div>
-
-          {/* Cross Validation Scores */}
-          {trainingMetrics.training_details?.cross_val_scores && (
-            <div className="p-4 bg-card rounded-lg">
-              <h4 className="font-semibold mb-2">Cross-Validation Scores</h4>
-              <div className="space-y-2 text-sm">
-                {trainingMetrics.training_details.cross_val_scores.map((score, index) => (
-                  <p key={index}>Fold {index + 1}: {(score * 100).toFixed(2)}%</p>
-                ))}
-                <p className="font-medium mt-2">
-                  Mean: {(trainingMetrics.training_details.cross_val_scores.reduce((a, b) => a + b, 0) / 
-                    trainingMetrics.training_details.cross_val_scores.length * 100).toFixed(2)}%
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Feature Importance */}
-        {trainingMetrics.feature_importance && (
-          <div className="p-4 bg-card rounded-lg">
-            <h4 className="font-semibold mb-2">Feature Importance</h4>
-            <div className="space-y-2">
-              {trainingMetrics.feature_importance.map((feature, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <div className="w-32 text-sm">{feature.feature}</div>
-                  <div className="flex-1 h-4 bg-secondary rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-primary"
-                      style={{ width: `${feature.importance * 100}%` }}
-                    />
+        {trainingStatus === 'completed' && trainingMetrics && (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {/* Performance Metrics */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Performance Metrics</CardTitle>
+                <CardDescription>Model accuracy and evaluation metrics</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Training Accuracy</span>
+                    <span className="text-sm">{(trainingMetrics.train_accuracy * 100).toFixed(1)}%</span>
                   </div>
-                  <div className="w-16 text-sm text-right">
-                    {(feature.importance * 100).toFixed(1)}%
+                  <Progress value={trainingMetrics.train_accuracy * 100} />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Test Accuracy</span>
+                    <span className="text-sm">{(trainingMetrics.test_accuracy * 100).toFixed(1)}%</span>
+                  </div>
+                  <Progress value={trainingMetrics.test_accuracy * 100} />
+                </div>
+                <div className="grid grid-cols-3 gap-2 pt-2">
+                  <div className="space-y-1">
+                    <span className="text-xs font-medium">Precision</span>
+                    <div className="text-lg font-bold">{(trainingMetrics.precision_class1 * 100).toFixed(1)}%</div>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-xs font-medium">Recall</span>
+                    <div className="text-lg font-bold">{(trainingMetrics.recall_class1 * 100).toFixed(1)}%</div>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-xs font-medium">F1 Score</span>
+                    <div className="text-lg font-bold">{(trainingMetrics.f1_class1 * 100).toFixed(1)}%</div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+              </CardContent>
+            </Card>
 
-        {/* Confusion Matrix */}
-        {trainingMetrics.training_details?.confusion_matrix && (
-          <div className="p-4 bg-card rounded-lg">
-            <h4 className="font-semibold mb-2">Confusion Matrix</h4>
-            <div className="grid grid-cols-2 gap-2 text-sm max-w-md mx-auto">
-              {trainingMetrics.training_details.confusion_matrix.map((row, i) => 
-                row.map((value, j) => (
-                  <div 
-                    key={`${i}-${j}`} 
-                    className={`p-2 text-center rounded ${
-                      (i === j) ? 'bg-green-100' : 'bg-red-100'
-                    }`}
-                  >
-                    <div className="font-medium">{value}</div>
-                    <div className="text-xs opacity-70">
-                      {i === 0 && j === 0 && 'True Negative'}
-                      {i === 0 && j === 1 && 'False Positive'}
-                      {i === 1 && j === 0 && 'False Negative'}
-                      {i === 1 && j === 1 && 'True Positive'}
+            {/* Feature Importance */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Feature Importance</CardTitle>
+                <CardDescription>Top factors influencing churn prediction</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[200px] pr-4">
+                  {Object.entries(trainingMetrics.feature_importance)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([feature, importance]) => (
+                      <div key={feature} className="mb-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium">{feature}</span>
+                          <span className="text-sm">{(importance * 100).toFixed(1)}%</span>
+                        </div>
+                        <Progress value={importance * 100} />
+                      </div>
+                    ))}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+            {/* Training Details */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Training Details</CardTitle>
+                <CardDescription>Model parameters and training information</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Total Samples</span>
+                      <Badge variant="secondary">{trainingMetrics.training_details.total_samples}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Training Time</span>
+                      <Badge variant="secondary">{trainingMetrics.training_details.training_time.toFixed(2)}s</Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Cross-Val Score</span>
+                      <Badge variant="secondary">
+                        {(getAverageCrossValScore(trainingMetrics.training_details.cross_val_scores) * 100).toFixed(1)}%
+                      </Badge>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+                  <div className="pt-2">
+                    <h4 className="text-sm font-medium mb-2">Best Parameters</h4>
+                    <ScrollArea className="h-[100px]">
+                      <div className="space-y-1">
+                        {Object.entries(trainingMetrics.best_params).map(([param, value]) => (
+                          <div key={param} className="text-xs">
+                            <span className="font-medium">{param}:</span> {value}
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
-        {/* Model Parameters */}
-        {trainingMetrics.model_info && (
-          <div className="p-4 bg-card rounded-lg">
-            <h4 className="font-semibold mb-2">Model Parameters</h4>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div className="flex justify-between">
-                <span>Number of Trees:</span>
-                <span>{trainingMetrics.model_info.n_estimators}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Max Depth:</span>
-                <span>{trainingMetrics.model_info.max_depth}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Min Samples Split:</span>
-                <span>{trainingMetrics.model_info.min_samples_split}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Min Samples Leaf:</span>
-                <span>{trainingMetrics.model_info.min_samples_leaf}</span>
-              </div>
-            </div>
-          </div>
+        {trainingStatus === 'error' && (
+          <Card className="border-destructive">
+            <CardHeader>
+              <CardTitle className="text-destructive">Training Failed</CardTitle>
+              <CardDescription>An error occurred during model training</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-destructive">{errorMessage}</p>
+            </CardContent>
+          </Card>
         )}
       </div>
     );
@@ -437,31 +410,8 @@ export function AdminPanel() {
         </div>
 
         {/* Model Training */}
-        <div className="space-y-4">
-          <h3 className="text-xl font-semibold">Model Management</h3>
-          <div className="space-y-4">
-            <Button onClick={handleTraining} disabled={loading || trainingStatus === 'training'}>
-              {trainingStatus === 'training' ? "Training in progress..." : "Retrain Model"}
-            </Button>
-
-            {trainingStatus === 'training' && (
-              <div className="p-4 bg-card rounded-lg">
-                <p className="text-sm animate-pulse">
-                  Training in progress... This may take a few minutes.
-                </p>
-              </div>
-            )}
-
-            {trainingStatus === 'completed' && renderTrainingMetrics()}
-
-            {trainingStatus === 'error' && (
-              <div className="p-4 bg-destructive/10 text-destructive rounded-lg">
-                <p className="text-sm">
-                  An error occurred during model training. Please try again.
-                </p>
-              </div>
-            )}
-          </div>
+        <div className="space-y-6">
+          {renderTrainingMetrics()}
         </div>
       </div>
     </div>

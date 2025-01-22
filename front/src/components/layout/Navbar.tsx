@@ -19,15 +19,20 @@ export function Navbar() {
   const isActive = (path: string) => pathname === path
 
   return (
-    <nav className="border-b">
-      <div className="flex h-16 items-center px-4">
-        <div className="flex items-center space-x-4 lg:space-x-6">
+    <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="flex h-16 items-center px-8">
+        <div className="flex-none w-48">
+          <Link href="/dashboard" className="text-xl font-bold bg-gradient-to-r from-primary to-primary/50 bg-clip-text text-transparent">
+            CodeByYassine
+          </Link>
+        </div>
+        <div className="flex justify-center flex-1 space-x-8">
           <Link
             href="/dashboard"
             className={cn(
-              "text-sm font-medium transition-colors hover:text-primary",
+              "text-sm font-medium transition-colors hover:text-primary relative py-2",
               isActive("/dashboard")
-                ? "text-primary"
+                ? "text-primary after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
                 : "text-muted-foreground"
             )}
           >
@@ -36,9 +41,9 @@ export function Navbar() {
           <Link
             href="/customers"
             className={cn(
-              "text-sm font-medium transition-colors hover:text-primary",
+              "text-sm font-medium transition-colors hover:text-primary relative py-2",
               isActive("/customers")
-                ? "text-primary"
+                ? "text-primary after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
                 : "text-muted-foreground"
             )}
           >
@@ -47,9 +52,9 @@ export function Navbar() {
           <Link
             href="/predict"
             className={cn(
-              "text-sm font-medium transition-colors hover:text-primary",
+              "text-sm font-medium transition-colors hover:text-primary relative py-2",
               isActive("/predict")
-                ? "text-primary"
+                ? "text-primary after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
                 : "text-muted-foreground"
             )}
           >
@@ -58,19 +63,20 @@ export function Navbar() {
           <Link
             href="/admin"
             className={cn(
-              "text-sm font-medium transition-colors hover:text-primary",
+              "text-sm font-medium transition-colors hover:text-primary relative py-2",
               isActive("/admin")
-                ? "text-primary"
+                ? "text-primary after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
                 : "text-muted-foreground"
             )}
           >
             Admin Panel
           </Link>
         </div>
-        <div className="ml-auto flex items-center space-x-4">
+        <div className="flex-none w-48 flex justify-end">
           <Button
             variant="ghost"
             onClick={handleLogout}
+            className="text-sm font-medium hover:text-primary"
           >
             Logout
           </Button>

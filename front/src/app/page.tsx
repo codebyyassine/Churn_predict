@@ -11,10 +11,8 @@ export default function RootPage() {
     const checkAuth = async () => {
       try {
         await ApiService.getUsers()
-        // If authenticated, redirect to dashboard
         router.push("/dashboard")
       } catch (error) {
-        // If not authenticated, redirect to login
         router.push("/login")
       }
     }
