@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/Yassine/Desktop/Workspace/school%20related/ML_PROJECT/churn_project/mlruns/321533087094298479/63a241c7c38e4508af503e29768a6a5b/artifacts
+end_time: 1737506146311
+entry_point_name: ''
+experiment_id: '321533087094298479'
+lifecycle_stage: active
+run_id: 63a241c7c38e4508af503e29768a6a5b
+run_name: resilient-ox-154
+run_uuid: 63a241c7c38e4508af503e29768a6a5b
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1737506100939
+status: 3
+tags: []
+user_id: root

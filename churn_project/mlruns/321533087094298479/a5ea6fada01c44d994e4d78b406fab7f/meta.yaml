@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/Yassine/Desktop/Workspace/school%20related/ML_PROJECT/churn_project/mlruns/321533087094298479/a5ea6fada01c44d994e4d78b406fab7f/artifacts
+end_time: 1737506552310
+entry_point_name: ''
+experiment_id: '321533087094298479'
+lifecycle_stage: active
+run_id: a5ea6fada01c44d994e4d78b406fab7f
+run_name: abrasive-quail-732
+run_uuid: a5ea6fada01c44d994e4d78b406fab7f
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1737506493343
+status: 3
+tags: []
+user_id: root

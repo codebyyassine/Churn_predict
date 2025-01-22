@@ -19,6 +19,8 @@ from django.contrib.auth.models import User
 from .models import CustomerChurn
 from .serializers import UserSerializer, CustomerChurnSerializer
 from django.shortcuts import get_object_or_404
+import joblib
+import traceback
 
 # Define features directly
 numerical_features = [
@@ -58,29 +60,63 @@ def trigger_training(request):
     Requires admin authentication.
     """
     try:
-        # Call the training command
+        # Call the training command and capture output
         call_command('train_churn')
         
-        # Reload the model after training
-        global model, scaler, le_geo, le_gender, feature_importance
-        with open(model_path, "rb") as f:
-            pipeline = pickle.load(f)
-            
-        model = pipeline["model"]
-        scaler = pipeline["scaler"]
-        le_geo = pipeline["label_encoder_geo"]
-        le_gender = pipeline["label_encoder_gender"]
-        feature_importance = pipeline.get("feature_importance", [])
+        # Load the latest model data
+        model_path = os.path.join(settings.BASE_DIR, "final_model.joblib")
+        with open(model_path, 'rb') as f:
+            model_data = joblib.load(f)
         
-        return JsonResponse({
+        # Extract detailed metrics and information
+        metrics = {
             "status": "success",
-            "message": "Model training completed successfully"
-        })
+            "message": "Model training completed successfully",
+            # Model Performance Metrics
+            "train_accuracy": float(model_data.get('train_accuracy', 0)),
+            "test_accuracy": float(model_data.get('test_accuracy', 0)),
+            "precision_class1": float(model_data.get('precision_class1', 0)),
+            "recall_class1": float(model_data.get('recall_class1', 0)),
+            "f1_class1": float(model_data.get('f1_score_class1', 0)),
+            
+            # Model Parameters
+            "best_params": model_data.get('best_params', {}),
+            
+            # Feature Importance
+            "feature_importance": model_data.get('feature_importance', []),
+            
+            # Additional Training Details
+            "training_details": {
+                "total_samples": int(model_data.get('total_samples', 0)),
+                "training_samples": int(model_data.get('training_samples', 0)),
+                "test_samples": int(model_data.get('test_samples', 0)),
+                "training_time": float(model_data.get('training_time', 0)),
+                "cross_val_scores": model_data.get('cross_val_scores', []),
+                "confusion_matrix": model_data.get('confusion_matrix', []),
+                "class_distribution": model_data.get('class_distribution', {}),
+            },
+            
+            # Model Information
+            "model_info": {
+                "model_type": "RandomForestClassifier",
+                "n_estimators": int(model_data.get('best_params', {}).get('n_estimators', 0)),
+                "max_depth": model_data.get('best_params', {}).get('max_depth', "None"),
+                "min_samples_split": int(model_data.get('best_params', {}).get('min_samples_split', 0)),
+                "min_samples_leaf": int(model_data.get('best_params', {}).get('min_samples_leaf', 0)),
+            }
+        }
+        
+        return JsonResponse(metrics)
         
     except Exception as e:
         return JsonResponse({
             "status": "error",
-            "message": str(e)
+            "message": str(e),
+            "details": {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": traceback.format_exc()
+            }
         }, status=500)
 
 @api_view(["POST"])
