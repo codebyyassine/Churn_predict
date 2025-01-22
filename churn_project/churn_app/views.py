@@ -22,6 +22,7 @@ from django.shortcuts import get_object_or_404
 import joblib
 import traceback
 from django.db.models import Count, Avg, Q, F
+from pathlib import Path
 
 # Define features directly
 numerical_features = [
@@ -31,17 +32,40 @@ numerical_features = [
 ]
 categorical_features = ["geography", "gender"]
 
-# Load your pipeline objects once on module import
-model_path = os.path.join(settings.BASE_DIR, "churn_model.pkl")
-with open(model_path, "rb") as f:
-    pipeline = pickle.load(f)
+def load_latest_model():
+    """Load the latest trained model and its components"""
+    models_dir = Path(settings.BASE_DIR) / "models"
+    latest_model_path = models_dir / "latest_model.joblib"
+    
+    if not latest_model_path.exists():
+        raise FileNotFoundError("No trained model found. Please train a model first.")
+    
+    model_data = joblib.load(latest_model_path)
+    return model_data
 
-model = pipeline["model"]
-scaler = pipeline["scaler"]
-le_geo = pipeline["label_encoder_geo"]
-le_gender = pipeline["label_encoder_gender"]
-feature_cols = numerical_features + categorical_features
-feature_importance = pipeline.get("feature_importance", [])
+# Load model components for prediction
+def get_model_components():
+    try:
+        model_data = load_latest_model()
+        
+        # Load metrics separately
+        models_dir = Path(settings.BASE_DIR) / "models"
+        latest_metrics_path = models_dir / "latest_metrics.json"
+        
+        with open(latest_metrics_path, 'r') as f:
+            metrics_data = json.load(f)
+        
+        return {
+            'model': model_data['model'],
+            'scaler': model_data['scaler'],
+            'label_encoder_geo': model_data['label_encoder_geo'],
+            'label_encoder_gender': model_data['label_encoder_gender'],
+            'feature_importance': metrics_data['feature_importance']
+        }
+    except Exception as e:
+        print(f"Error loading model components: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        return None
 
 # Add cache TTL constant (1 hour)
 CACHE_TTL = 60 * 60
@@ -61,55 +85,37 @@ def trigger_training(request):
     Requires admin authentication.
     """
     try:
-        # Call the training command and capture output
+        # Call the training command
         call_command('train_churn')
         
-        # Load the latest model data
-        model_path = os.path.join(settings.BASE_DIR, "final_model.joblib")
-        with open(model_path, 'rb') as f:
-            model_data = joblib.load(f)
+        # Load metrics and training status
+        models_dir = Path(settings.BASE_DIR) / "models"
+        latest_metrics_path = models_dir / "latest_metrics.json"
+        best_metrics_path = models_dir / "best_metrics.json"
+        training_status_path = models_dir / "training_status.json"
         
-        # Extract detailed metrics and information
-        metrics = {
+        with open(latest_metrics_path, 'r') as f:
+            latest_metrics = json.load(f)
+        
+        with open(best_metrics_path, 'r') as f:
+            best_metrics = json.load(f)
+            
+        with open(training_status_path, 'r') as f:
+            training_status = json.load(f)
+        
+        response = {
             "status": "success",
             "message": "Model training completed successfully",
-            # Model Performance Metrics
-            "train_accuracy": float(model_data.get('train_accuracy', 0)),
-            "test_accuracy": float(model_data.get('test_accuracy', 0)),
-            "precision_class1": float(model_data.get('precision_class1', 0)),
-            "recall_class1": float(model_data.get('recall_class1', 0)),
-            "f1_class1": float(model_data.get('f1_score_class1', 0)),
-            
-            # Model Parameters
-            "best_params": model_data.get('best_params', {}),
-            
-            # Feature Importance
-            "feature_importance": model_data.get('feature_importance', []),
-            
-            # Additional Training Details
-            "training_details": {
-                "total_samples": int(model_data.get('total_samples', 0)),
-                "training_samples": int(model_data.get('training_samples', 0)),
-                "test_samples": int(model_data.get('test_samples', 0)),
-                "training_time": float(model_data.get('training_time', 0)),
-                "cross_val_scores": model_data.get('cross_val_scores', []),
-                "confusion_matrix": model_data.get('confusion_matrix', []),
-                "class_distribution": model_data.get('class_distribution', {}),
-            },
-            
-            # Model Information
-            "model_info": {
-                "model_type": "RandomForestClassifier",
-                "n_estimators": int(model_data.get('best_params', {}).get('n_estimators', 0)),
-                "max_depth": model_data.get('best_params', {}).get('max_depth', "None"),
-                "min_samples_split": int(model_data.get('best_params', {}).get('min_samples_split', 0)),
-                "min_samples_leaf": int(model_data.get('best_params', {}).get('min_samples_leaf', 0)),
-            }
+            "latest_metrics": latest_metrics,
+            "best_metrics": best_metrics,
+            "is_new_best": training_status.get('is_best', False)
         }
         
-        return JsonResponse(metrics)
+        return JsonResponse(response)
         
     except Exception as e:
+        print(f"Training error: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
         return JsonResponse({
             "status": "error",
             "message": str(e),
@@ -118,6 +124,41 @@ def trigger_training(request):
                 "error_message": str(e),
                 "traceback": traceback.format_exc()
             }
+        }, status=500)
+
+@api_view(["GET"])
+@authentication_classes([BasicAuthentication])
+@permission_classes([IsAdminUser])
+def get_model_metrics(request):
+    """
+    API endpoint to get both latest and best model metrics.
+    """
+    try:
+        models_dir = Path(settings.BASE_DIR) / "models"
+        latest_metrics_path = models_dir / "latest_metrics.json"
+        best_metrics_path = models_dir / "best_metrics.json"
+        
+        latest_metrics = None
+        best_metrics = None
+        
+        if latest_metrics_path.exists():
+            with open(latest_metrics_path, 'r') as f:
+                latest_metrics = json.load(f)
+        
+        if best_metrics_path.exists():
+            with open(best_metrics_path, 'r') as f:
+                best_metrics = json.load(f)
+        
+        return JsonResponse({
+            "status": "success",
+            "latest_metrics": latest_metrics,
+            "best_metrics": best_metrics
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            "status": "error",
+            "message": str(e)
         }, status=500)
 
 @api_view(["POST"])
@@ -151,6 +192,17 @@ def predict_churn(request):
         if cached_result is not None:
             return JsonResponse(cached_result)
 
+        # Get model components
+        components = get_model_components()
+        if not components:
+            return JsonResponse({"error": "Model not loaded. Please train the model first."}, status=400)
+
+        model = components['model']
+        scaler = components['scaler']
+        le_geo = components['label_encoder_geo']
+        le_gender = components['label_encoder_gender']
+        feature_importance = components['feature_importance']
+
         # Create a DataFrame with the input data
         input_data = {
             "credit_score": float(data.get("credit_score", 0)),
@@ -176,6 +228,7 @@ def predict_churn(request):
         df[numerical_features] = scaler.transform(df[numerical_features])
         
         # Ensure proper feature order for prediction
+        feature_cols = numerical_features + categorical_features
         feature_array = df[feature_cols].values
 
         # Predict
@@ -194,6 +247,8 @@ def predict_churn(request):
         return JsonResponse(result)
         
     except Exception as e:
+        print(f"Prediction error: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
         return JsonResponse({"error": str(e)}, status=400)
 
 # User ViewSet

@@ -15,6 +15,7 @@ urlpatterns = [
     # Custom endpoints
     path('predict/', views.predict_churn, name='predict_churn'),
     path('train/', views.trigger_training, name='train_model'),
+    path('model-metrics/', views.get_model_metrics, name='model_metrics'),
     path('dashboard/stats/', views.get_dashboard_stats, name='dashboard_stats'),
     
     # Bulk operations

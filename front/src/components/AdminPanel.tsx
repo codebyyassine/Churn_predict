@@ -27,6 +27,12 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Icons } from "@/components/icons"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
 
 interface User {
   id: number;
@@ -62,6 +68,11 @@ interface TrainingMetrics {
   best_params: Record<string, any>;
 }
 
+interface ModelMetrics {
+  latest_metrics: TrainingMetrics | null;
+  best_metrics: TrainingMetrics | null;
+}
+
 export function AdminPanel() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -76,11 +87,16 @@ export function AdminPanel() {
   })
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [trainingStatus, setTrainingStatus] = useState<'idle' | 'training' | 'completed' | 'error'>('idle')
-  const [trainingMetrics, setTrainingMetrics] = useState<TrainingMetrics | null>(null)
+  const [modelMetrics, setModelMetrics] = useState<ModelMetrics>({
+    latest_metrics: null,
+    best_metrics: null
+  })
+  const [selectedModel, setSelectedModel] = useState<'latest' | 'best'>('latest')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     loadUsers()
+    loadModelMetrics()
   }, [])
 
   const loadUsers = async () => {
@@ -105,6 +121,23 @@ export function AdminPanel() {
     }
   }
 
+  const loadModelMetrics = async () => {
+    try {
+      const data = await ApiService.getModelMetrics()
+      setModelMetrics({
+        latest_metrics: data.latest_metrics,
+        best_metrics: data.best_metrics
+      })
+    } catch (error) {
+      console.error('Error loading model metrics:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load model metrics",
+        variant: "destructive",
+      })
+    }
+  }
+
   const handleLogout = () => {
     ApiService.clearCredentials()
     router.push("/login")
@@ -115,23 +148,18 @@ export function AdminPanel() {
     setErrorMessage(null)
     
     try {
-      const metrics = await ApiService.trainModel()
-      // Ensure feature_importance is in the correct format
-      const formattedMetrics = {
-        ...metrics,
-        feature_importance: Array.isArray(metrics.feature_importance) 
-          ? metrics.feature_importance 
-          : Object.entries(metrics.feature_importance || {}).map(([feature, importance]) => ({
-              feature,
-              importance: Number(importance)
-            }))
-      }
-      setTrainingMetrics(formattedMetrics)
+      const result = await ApiService.trainModel()
+      setModelMetrics({
+        latest_metrics: result.latest_metrics,
+        best_metrics: result.best_metrics
+      })
       setTrainingStatus('completed')
       
       toast({
         title: "Success",
-        description: "Model training completed successfully",
+        description: result.is_new_best 
+          ? "New best model trained and saved!" 
+          : "Model training completed successfully",
       })
     } catch (err) {
       console.error('Training failed:', err)
@@ -177,34 +205,123 @@ export function AdminPanel() {
     return scores.reduce((a, b) => a + b, 0) / scores.length
   }
 
-  const renderTrainingMetrics = () => {
-    if (!trainingMetrics) {
+  const renderModelMetrics = (metrics: TrainingMetrics | null) => {
+    if (!metrics || !metrics.training_details) {
+      console.log('Invalid metrics data:', metrics);
       return (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold tracking-tight">Model Management</h2>
-              <p className="text-sm text-muted-foreground">Train and monitor the churn prediction model</p>
-            </div>
-            <Button 
-              onClick={handleTraining} 
-              disabled={trainingStatus === 'training'}
-              className="min-w-[120px]"
-            >
-              {trainingStatus === 'training' ? (
-                <>
-                  <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
-                  Training
-                </>
-              ) : (
-                'Train Model'
-              )}
-            </Button>
-          </div>
+        <div className="text-center py-4 text-muted-foreground">
+          No model metrics available
         </div>
       );
     }
 
+    return (
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {/* Performance Metrics */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Performance Metrics</CardTitle>
+            <CardDescription>Model accuracy and evaluation metrics</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Training Accuracy</span>
+                <span className="text-sm">{(metrics.train_accuracy * 100).toFixed(1)}%</span>
+              </div>
+              <Progress value={metrics.train_accuracy * 100} />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Test Accuracy</span>
+                <span className="text-sm">{(metrics.test_accuracy * 100).toFixed(1)}%</span>
+              </div>
+              <Progress value={metrics.test_accuracy * 100} />
+            </div>
+            <div className="grid grid-cols-3 gap-2 pt-2">
+              <div className="space-y-1">
+                <span className="text-xs font-medium">Precision</span>
+                <div className="text-lg font-bold">{(metrics.precision_class1 * 100).toFixed(1)}%</div>
+              </div>
+              <div className="space-y-1">
+                <span className="text-xs font-medium">Recall</span>
+                <div className="text-lg font-bold">{(metrics.recall_class1 * 100).toFixed(1)}%</div>
+              </div>
+              <div className="space-y-1">
+                <span className="text-xs font-medium">F1 Score</span>
+                <div className="text-lg font-bold">{(metrics.f1_class1 * 100).toFixed(1)}%</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Feature Importance */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Feature Importance</CardTitle>
+            <CardDescription>Top factors influencing churn prediction</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[200px] pr-4">
+              {metrics.feature_importance && metrics.feature_importance
+                .sort((a, b) => b.importance - a.importance)
+                .map((feature) => (
+                  <div key={feature.feature} className="mb-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium">{feature.feature}</span>
+                      <span className="text-sm">{(feature.importance * 100).toFixed(1)}%</span>
+                    </div>
+                    <Progress value={feature.importance * 100} />
+                  </div>
+                ))}
+            </ScrollArea>
+          </CardContent>
+        </Card>
+
+        {/* Training Details */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Training Details</CardTitle>
+            <CardDescription>Model parameters and training information</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Total Samples</span>
+                  <Badge variant="secondary">{metrics.training_details.total_samples}</Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Training Time</span>
+                  <Badge variant="secondary">{metrics.training_details.training_time.toFixed(2)}s</Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Cross-Val Score</span>
+                  <Badge variant="secondary">
+                    {(getAverageCrossValScore(metrics.training_details.cross_val_scores) * 100).toFixed(1)}%
+                  </Badge>
+                </div>
+              </div>
+              <div className="pt-2">
+                <h4 className="text-sm font-medium mb-2">Best Parameters</h4>
+                <ScrollArea className="h-[100px]">
+                  <div className="space-y-1">
+                    {metrics.best_params && Object.entries(metrics.best_params).map(([param, value]) => (
+                      <div key={param} className="text-xs">
+                        <span className="font-medium">{param}:</span> {value}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const renderTrainingMetrics = () => {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -228,110 +345,30 @@ export function AdminPanel() {
           </Button>
         </div>
 
-        {trainingStatus === 'completed' && trainingMetrics && (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {/* Performance Metrics */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Performance Metrics</CardTitle>
-                <CardDescription>Model accuracy and evaluation metrics</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Training Accuracy</span>
-                    <span className="text-sm">{(trainingMetrics.train_accuracy * 100).toFixed(1)}%</span>
-                  </div>
-                  <Progress value={trainingMetrics.train_accuracy * 100} />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Test Accuracy</span>
-                    <span className="text-sm">{(trainingMetrics.test_accuracy * 100).toFixed(1)}%</span>
-                  </div>
-                  <Progress value={trainingMetrics.test_accuracy * 100} />
-                </div>
-                <div className="grid grid-cols-3 gap-2 pt-2">
-                  <div className="space-y-1">
-                    <span className="text-xs font-medium">Precision</span>
-                    <div className="text-lg font-bold">{(trainingMetrics.precision_class1 * 100).toFixed(1)}%</div>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-xs font-medium">Recall</span>
-                    <div className="text-lg font-bold">{(trainingMetrics.recall_class1 * 100).toFixed(1)}%</div>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-xs font-medium">F1 Score</span>
-                    <div className="text-lg font-bold">{(trainingMetrics.f1_class1 * 100).toFixed(1)}%</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Feature Importance */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Feature Importance</CardTitle>
-                <CardDescription>Top factors influencing churn prediction</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[200px] pr-4">
-                  {trainingMetrics.feature_importance
-                    .sort((a, b) => b.importance - a.importance)
-                    .map((feature) => (
-                      <div key={feature.feature} className="mb-2">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-medium">{feature.feature}</span>
-                          <span className="text-sm">{(feature.importance * 100).toFixed(1)}%</span>
-                        </div>
-                        <Progress value={feature.importance * 100} />
-                      </div>
-                    ))}
-                </ScrollArea>
-              </CardContent>
-            </Card>
-
-            {/* Training Details */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Training Details</CardTitle>
-                <CardDescription>Model parameters and training information</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Total Samples</span>
-                      <Badge variant="secondary">{trainingMetrics.training_details.total_samples}</Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Training Time</span>
-                      <Badge variant="secondary">{trainingMetrics.training_details.training_time.toFixed(2)}s</Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Cross-Val Score</span>
-                      <Badge variant="secondary">
-                        {(getAverageCrossValScore(trainingMetrics.training_details.cross_val_scores) * 100).toFixed(1)}%
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="pt-2">
-                    <h4 className="text-sm font-medium mb-2">Best Parameters</h4>
-                    <ScrollArea className="h-[100px]">
-                      <div className="space-y-1">
-                        {Object.entries(trainingMetrics.best_params).map(([param, value]) => (
-                          <div key={param} className="text-xs">
-                            <span className="font-medium">{param}:</span> {value}
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+        <Tabs value={selectedModel} onValueChange={(value) => setSelectedModel(value as 'latest' | 'best')}>
+          <TabsList className="grid w-[400px] grid-cols-2">
+            <TabsTrigger value="latest">Latest Model</TabsTrigger>
+            <TabsTrigger value="best">Best Model</TabsTrigger>
+          </TabsList>
+          <TabsContent value="latest">
+            {modelMetrics.latest_metrics ? (
+              renderModelMetrics(modelMetrics.latest_metrics)
+            ) : (
+              <div className="text-center py-4 text-muted-foreground">
+                No model metrics available
+              </div>
+            )}
+          </TabsContent>
+          <TabsContent value="best">
+            {modelMetrics.best_metrics ? (
+              renderModelMetrics(modelMetrics.best_metrics)
+            ) : (
+              <div className="text-center py-4 text-muted-foreground">
+                No best model metrics available
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
 
         {trainingStatus === 'error' && (
           <Card className="border-destructive">
@@ -346,7 +383,7 @@ export function AdminPanel() {
         )}
       </div>
     );
-  };
+  }
 
   return (
     <div className="space-y-8">

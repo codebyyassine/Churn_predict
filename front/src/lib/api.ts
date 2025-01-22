@@ -244,6 +244,17 @@ export class ApiService {
     return response.json();
   }
 
+  static async getModelMetrics() {
+    const response = await fetch(url('/model-metrics'), {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to get model metrics: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
   static async getDashboardStats(): Promise<any> {
     const response = await fetch(url('/dashboard/stats'), {
       method: 'GET',

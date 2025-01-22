@@ -14,6 +14,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import time
 import json
+import os
+from pathlib import Path
 
 class Command(BaseCommand):
     help = "Train churn model from Postgres data with advanced preprocessing and RandomForest."
@@ -21,6 +23,20 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         start_time = time.time()
         
+        # Create models directory if it doesn't exist
+        models_dir = Path(settings.BASE_DIR) / "models"
+        models_dir.mkdir(exist_ok=True)
+        
+        # Load best metrics if exists
+        best_metrics_path = models_dir / "best_metrics.json"
+        best_model_path = models_dir / "best_model.joblib"
+        best_test_accuracy = 0
+        
+        if best_metrics_path.exists():
+            with open(best_metrics_path, 'r') as f:
+                best_metrics = json.load(f)
+                best_test_accuracy = best_metrics.get('test_accuracy', 0)
+
         # 1. Connect to DB and load data into DataFrame
         conn = psycopg2.connect(
             host=settings.DATABASES['default']['HOST'],
@@ -142,55 +158,59 @@ class Command(BaseCommand):
                 'importance': best_rf.feature_importances_
             }).sort_values('importance', ascending=False)
             
-            # Create feature importance plot
-            plt.figure(figsize=(10, 6))
-            sns.barplot(data=feature_importance, x='importance', y='feature')
-            plt.title('Feature Importance')
-            plt.tight_layout()
-            plt.savefig('feature_importance.png')
-            
-            # Calculate training time
-            training_time = time.time() - start_time
+            # Convert feature importance to list format - values are already floats
+            feature_importance_list = [
+                {'feature': str(feature), 'importance': float(importance)}
+                for feature, importance in zip(feature_importance['feature'], feature_importance['importance'])
+            ]
 
-            # Save all metrics and model data
-            model_data = {
-                'model': best_rf,
-                'scaler': scaler,
-                'label_encoder_geo': le_geo,
-                'label_encoder_gender': le_gender,
-                'features': list(X.columns),
-                'numerical_features': numerical_features,
-                'categorical_features': categorical_features,
-                'feature_importance': feature_importance.to_dict(orient='records'),
+            # Separate metrics data for JSON serialization
+            metrics_data = {
+                'train_accuracy': float(train_accuracy),
+                'test_accuracy': float(test_accuracy),
+                'precision_class1': float(report['1']['precision']),
+                'recall_class1': float(report['1']['recall']),
+                'f1_class1': float(report['1']['f1-score']),
+                'feature_importance': feature_importance_list,
+                'training_details': {
+                    'total_samples': int(total_samples),
+                    'training_time': float(time.time() - start_time),
+                    'cross_val_scores': [float(score) for score in cv_scores]
+                },
                 'best_params': grid_search.best_params_,
-                
-                # Additional metrics
-                'train_accuracy': train_accuracy,
-                'test_accuracy': test_accuracy,
-                'precision_class1': report['1']['precision'],
-                'recall_class1': report['1']['recall'],
-                'f1_score_class1': report['1']['f1-score'],
-                'confusion_matrix': conf_matrix,
-                'cross_val_scores': cv_scores.tolist(),
-                'total_samples': total_samples,
-                'training_samples': training_samples,
-                'test_samples': test_samples,
-                'training_time': training_time,
-                'class_distribution': class_distribution,
-                'missing_values': missing_values.to_dict(),
+                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
             }
+
+            # Save latest model and metrics
+            latest_model_path = models_dir / "latest_model.joblib"
+            latest_metrics_path = models_dir / "latest_metrics.json"
             
+            joblib.dump(best_rf, latest_model_path)
+            with open(latest_metrics_path, 'w') as f:
+                json.dump(metrics_data, f)
+
+            # Update best model if current model is better
+            if test_accuracy > best_test_accuracy:
+                joblib.dump(best_rf, best_model_path)
+                with open(best_metrics_path, 'w') as f:
+                    json.dump(metrics_data, f)
+                self.stdout.write(self.style.SUCCESS("\nNew best model saved!"))
+
             # Log metrics to MLflow
             mlflow.log_metric("train_accuracy", train_accuracy)
             mlflow.log_metric("test_accuracy", test_accuracy)
             mlflow.log_metric("precision_class1", report['1']['precision'])
             mlflow.log_metric("recall_class1", report['1']['recall'])
             mlflow.log_metric("f1_class1", report['1']['f1-score'])
-            mlflow.log_metric("training_time", training_time)
+            mlflow.log_metric("training_time", time.time() - start_time)
             
             # Log artifacts
+            plt.figure(figsize=(10, 6))
+            sns.barplot(data=feature_importance, x='importance', y='feature')
+            plt.title('Feature Importance')
+            plt.tight_layout()
+            plt.savefig('feature_importance.png')
             mlflow.log_artifact('feature_importance.png')
-            mlflow.log_dict(feature_importance.to_dict(orient='records'), "feature_importance.json")
             
             # Log parameters
             mlflow.log_params({
@@ -207,7 +227,9 @@ class Command(BaseCommand):
                 f"\nTotal Samples: {total_samples}"
                 f"\nTraining Samples: {training_samples}"
                 f"\nTest Samples: {test_samples}"
-                f"\nTraining Time: {training_time:.2f} seconds"
+                f"\nTraining Time: {time.time() - start_time:.2f} seconds"
+                f"\nPrevious Best Accuracy: {best_test_accuracy:.4f}"
+                f"\nCurrent Test Accuracy: {test_accuracy:.4f}"
                 f"\n\nClass Distribution:"
                 f"\n{json.dumps(class_distribution, indent=2)}"
                 f"\n\nBest Parameters:"
@@ -226,6 +248,11 @@ class Command(BaseCommand):
                 f"\n{np.array2string(np.array(conf_matrix))}"
             ))
             
-            # Save the model and all data
-            joblib.dump(model_data, 'final_model.joblib')
-            self.stdout.write(self.style.SUCCESS("\nModel training completed and saved as final_model.joblib"))
+            # Save training result status
+            result_status = {
+                'is_best': test_accuracy > best_test_accuracy,
+                'previous_best': float(best_test_accuracy)
+            }
+            
+            with open(models_dir / "training_status.json", 'w') as f:
+                json.dump(result_status, f)
