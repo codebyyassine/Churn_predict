@@ -50,7 +50,10 @@ interface TrainingMetrics {
   precision_class1: number;
   recall_class1: number;
   f1_class1: number;
-  feature_importance: Record<string, number>;
+  feature_importance: Array<{
+    feature: string;
+    importance: number;
+  }>;
   training_details: {
     total_samples: number;
     training_time: number;
@@ -113,12 +116,33 @@ export function AdminPanel() {
     
     try {
       const metrics = await ApiService.trainModel()
-      setTrainingMetrics(metrics)
+      // Ensure feature_importance is in the correct format
+      const formattedMetrics = {
+        ...metrics,
+        feature_importance: Array.isArray(metrics.feature_importance) 
+          ? metrics.feature_importance 
+          : Object.entries(metrics.feature_importance || {}).map(([feature, importance]) => ({
+              feature,
+              importance: Number(importance)
+            }))
+      }
+      setTrainingMetrics(formattedMetrics)
       setTrainingStatus('completed')
+      
+      toast({
+        title: "Success",
+        description: "Model training completed successfully",
+      })
     } catch (err) {
       console.error('Training failed:', err)
       setErrorMessage(err instanceof Error ? err.message : 'An error occurred during training')
       setTrainingStatus('error')
+      
+      toast({
+        title: "Error",
+        description: "Model training failed",
+        variant: "destructive",
+      })
     }
   }
 
@@ -154,7 +178,32 @@ export function AdminPanel() {
   }
 
   const renderTrainingMetrics = () => {
-    if (!trainingMetrics) return null;
+    if (!trainingMetrics) {
+      return (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Model Management</h2>
+              <p className="text-sm text-muted-foreground">Train and monitor the churn prediction model</p>
+            </div>
+            <Button 
+              onClick={handleTraining} 
+              disabled={trainingStatus === 'training'}
+              className="min-w-[120px]"
+            >
+              {trainingStatus === 'training' ? (
+                <>
+                  <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
+                  Training
+                </>
+              ) : (
+                'Train Model'
+              )}
+            </Button>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="space-y-6">
@@ -227,15 +276,15 @@ export function AdminPanel() {
               </CardHeader>
               <CardContent>
                 <ScrollArea className="h-[200px] pr-4">
-                  {Object.entries(trainingMetrics.feature_importance)
-                    .sort(([, a], [, b]) => b - a)
-                    .map(([feature, importance]) => (
-                      <div key={feature} className="mb-2">
+                  {trainingMetrics.feature_importance
+                    .sort((a, b) => b.importance - a.importance)
+                    .map((feature) => (
+                      <div key={feature.feature} className="mb-2">
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-medium">{feature}</span>
-                          <span className="text-sm">{(importance * 100).toFixed(1)}%</span>
+                          <span className="text-sm font-medium">{feature.feature}</span>
+                          <span className="text-sm">{(feature.importance * 100).toFixed(1)}%</span>
                         </div>
-                        <Progress value={importance * 100} />
+                        <Progress value={feature.importance * 100} />
                       </div>
                     ))}
                 </ScrollArea>
