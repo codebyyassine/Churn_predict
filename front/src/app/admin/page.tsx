@@ -2,17 +2,17 @@
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { AdminPanel } from "@/components/AdminPanel"
 import { ApiService } from "@/lib/api"
 
-export default function RootPage() {
+export default function AdminPage() {
   const router = useRouter()
 
   useEffect(() => {
+    // Check if user is authenticated
     const checkAuth = async () => {
       try {
         await ApiService.getUsers()
-        // If authenticated, redirect to dashboard
-        router.push("/dashboard")
       } catch (error) {
         // If not authenticated, redirect to login
         router.push("/login")
@@ -22,5 +22,9 @@ export default function RootPage() {
     checkAuth()
   }, [router])
 
-  return null
-}
+  return (
+    <div className="container py-8">
+      <AdminPanel />
+    </div>
+  )
+} 

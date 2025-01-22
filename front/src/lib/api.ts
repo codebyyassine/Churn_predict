@@ -93,6 +93,10 @@ export class ApiService {
     this.credentials = credentials;
   }
 
+  static clearCredentials() {
+    this.credentials = null;
+  }
+
   private static getHeaders() {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -238,5 +242,18 @@ export class ApiService {
       throw new Error(`Failed to train model: ${response.statusText}`);
     }
     return response.json();
+  }
+
+  static async getDashboardStats(): Promise<any> {
+    const response = await fetch(url('/dashboard/stats'), {
+      method: 'GET',
+      headers: this.getHeaders(),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch dashboard stats: ${response.statusText}`)
+    }
+
+    return response.json()
   }
 } 

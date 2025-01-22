@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { toast } from "@/components/ui/use-toast"
 import { ApiService } from "@/lib/api"
 import {
@@ -21,6 +21,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 
 interface User {
   id: number;
@@ -68,11 +69,9 @@ interface TrainingMetrics {
 }
 
 export function AdminPanel() {
-  const [username, setUsername] = useState("")
-  const [password, setPassword] = useState("")
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [users, setUsers] = useState<User[]>([])
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [newUser, setNewUser] = useState({
     username: "",
     email: "",
@@ -85,10 +84,9 @@ export function AdminPanel() {
   const [trainingStatus, setTrainingStatus] = useState<'idle' | 'training' | 'completed' | 'error'>('idle')
   const [trainingMetrics, setTrainingMetrics] = useState<TrainingMetrics | null>(null)
 
-  const handleLogin = () => {
-    ApiService.setCredentials({ username, password })
+  useEffect(() => {
     loadUsers()
-  }
+  }, [])
 
   const loadUsers = async () => {
     try {
@@ -101,17 +99,20 @@ export function AdminPanel() {
         console.error('Received unexpected data format:', data)
         setUsers([])
       }
-      setIsAuthenticated(true)
     } catch (error) {
       console.error('Error loading users:', error)
       toast({
         title: "Error",
-        description: "Failed to authenticate. Please check your credentials.",
+        description: "Failed to load users.",
         variant: "destructive",
       })
-      setIsAuthenticated(false)
       setUsers([])
     }
+  }
+
+  const handleLogout = () => {
+    ApiService.clearCredentials()
+    router.push("/login")
   }
 
   async function handleTraining() {
@@ -147,7 +148,7 @@ export function AdminPanel() {
       setTrainingStatus('error')
       toast({
         title: "Error",
-        description: "Failed to trigger model training. Please check your credentials.",
+        description: "Failed to trigger model training.",
         variant: "destructive",
       })
     } finally {
@@ -325,42 +326,11 @@ export function AdminPanel() {
     );
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="space-y-4 max-w-md mx-auto p-6 bg-card rounded-lg shadow">
-        <h2 className="text-2xl font-bold">Admin Login</h2>
-        <div className="grid gap-4">
-          <div>
-            <label className="text-sm font-medium">Username</label>
-            <Input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Admin username"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium">Password</label>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Admin password"
-            />
-          </div>
-          <Button onClick={handleLogin} disabled={!username || !password}>
-            Login
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Admin Panel</h2>
-        <Button onClick={() => setIsAuthenticated(false)}>Logout</Button>
+        <Button onClick={handleLogout}>Logout</Button>
       </div>
 
       <div className="grid gap-8">
@@ -417,22 +387,18 @@ export function AdminPanel() {
                       onChange={(e) => setNewUser({ ...newUser, last_name: e.target.value })}
                     />
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={newUser.is_staff}
                       onChange={(e) => setNewUser({ ...newUser, is_staff: e.target.checked })}
+                      className="h-4 w-4"
                     />
-                    <label className="text-sm font-medium">Admin Access</label>
+                    <label className="text-sm font-medium">Admin User</label>
                   </div>
                 </div>
-                <div className="flex justify-end space-x-2">
-                  <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleCreateUser}>
-                    Create User
-                  </Button>
+                <div className="flex justify-end">
+                  <Button onClick={handleCreateUser}>Create User</Button>
                 </div>
               </DialogContent>
             </Dialog>

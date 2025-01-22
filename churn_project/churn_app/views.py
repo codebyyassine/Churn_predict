@@ -21,6 +21,7 @@ from .serializers import UserSerializer, CustomerChurnSerializer
 from django.shortcuts import get_object_or_404
 import joblib
 import traceback
+from django.db.models import Count, Avg, Q, F
 
 # Define features directly
 numerical_features = [
@@ -347,3 +348,72 @@ def bulk_delete_customers(request):
     
     CustomerChurn.objects.filter(id__in=request.data).delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+@api_view(['GET'])
+def get_dashboard_stats(request):
+    """
+    Get dashboard statistics including:
+    - Total customers
+    - Churn rate
+    - Active customers
+    - Inactive customers
+    - Average credit score
+    - Average age
+    - Average balance
+    - Geography distribution
+    - Product distribution
+    """
+    try:
+        # Get base queryset
+        customers = CustomerChurn.objects.all()
+        
+        # Calculate basic stats
+        total_customers = customers.count()
+        churned_customers = customers.filter(exited=True).count()
+        active_customers = customers.filter(is_active_member=True).count()
+        
+        # Calculate averages
+        averages = customers.aggregate(
+            avg_credit_score=Avg('credit_score'),
+            avg_age=Avg('age'),
+            avg_balance=Avg('balance')
+        )
+        
+        # Get geography distribution
+        geography_dist = list(customers.values('geography').annotate(
+            count=Count('customer_id')
+        ).order_by('-count'))
+        
+        # Get product distribution
+        product_dist = list(customers.values('num_of_products').annotate(
+            count=Count('customer_id')
+        ).order_by('num_of_products'))
+        
+        # Calculate churn rate by geography
+        churn_by_geography = list(customers.values('geography').annotate(
+            total=Count('customer_id'),
+            churned=Count('customer_id', filter=Q(exited=True))
+        ).annotate(
+            churn_rate=100.0 * F('churned') / F('total')
+        ).order_by('-churn_rate'))
+        
+        return Response({
+            'total_customers': total_customers,
+            'churn_rate': (churned_customers / total_customers * 100) if total_customers > 0 else 0,
+            'active_customers': active_customers,
+            'inactive_customers': total_customers - active_customers,
+            'averages': {
+                'credit_score': round(averages['avg_credit_score'] or 0, 2),
+                'age': round(averages['avg_age'] or 0, 2),
+                'balance': round(averages['avg_balance'] or 0, 2)
+            },
+            'geography_distribution': geography_dist,
+            'product_distribution': product_dist,
+            'churn_by_geography': churn_by_geography
+        })
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
