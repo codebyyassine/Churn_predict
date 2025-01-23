@@ -2,7 +2,7 @@ import pickle
 import numpy as np
 import pandas as pd
 from django.http import JsonResponse
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.decorators import api_view, authentication_classes, permission_classes, parser_classes
 from rest_framework.permissions import IsAdminUser
 from rest_framework.authentication import BasicAuthentication
 from rest_framework.response import Response
@@ -16,13 +16,16 @@ from django.core.management import call_command
 from rest_framework import viewsets, permissions, status, filters
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet, NumberFilter
 from django.contrib.auth.models import User
-from .models import CustomerChurn
-from .serializers import UserSerializer, CustomerChurnSerializer
+from .models import CustomerChurn, ChurnRiskHistory
+from .serializers import UserSerializer, CustomerChurnSerializer, CSVImportSerializer
 from django.shortcuts import get_object_or_404
 import joblib
 import traceback
 from django.db.models import Count, Avg, Q, F
 from pathlib import Path
+from django.utils import timezone
+from django.db import transaction
+from rest_framework.parsers import MultiPartParser
 
 # Define features directly
 numerical_features = [
@@ -609,3 +612,155 @@ def get_dashboard_stats(request):
             {'error': str(e)}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAdminUser])
+def get_risk_monitoring(request):
+    """
+    Get risk monitoring data including:
+    - High risk customers
+    - Recent risk changes
+    - Risk history for specific customer
+    """
+    try:
+        customer_id = request.query_params.get('customer_id')
+        
+        if customer_id:
+            # Get risk history for specific customer
+            customer = get_object_or_404(CustomerChurn, customer_id=customer_id)
+            history = ChurnRiskHistory.objects.filter(customer=customer).order_by('-timestamp')[:10]
+            
+            return Response({
+                'customer_id': customer_id,
+                'current_probability': history[0].churn_probability if history else None,
+                'is_high_risk': history[0].is_high_risk if history else False,
+                'history': [{
+                    'timestamp': h.timestamp,
+                    'probability': h.churn_probability,
+                    'risk_change': h.risk_change,
+                    'is_high_risk': h.is_high_risk
+                } for h in history]
+            })
+        
+        # Get all high risk customers
+        high_risk_records = ChurnRiskHistory.objects.filter(
+            is_high_risk=True,
+            timestamp__gte=timezone.now() - timezone.timedelta(days=7)
+        ).select_related('customer').order_by('-timestamp')
+        
+        return Response({
+            'high_risk_customers': [{
+                'customer_id': record.customer.customer_id,
+                'surname': record.customer.surname,
+                'probability': record.churn_probability,
+                'risk_change': record.risk_change,
+                'timestamp': record.timestamp
+            } for record in high_risk_records]
+        })
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['POST'])
+@csrf_exempt
+@authentication_classes([BasicAuthentication])
+@permission_classes([IsAdminUser])
+def import_csv(request):
+    """
+    Import customer data from CSV file.
+    Handles duplicate customer IDs by either skipping or updating based on update_existing parameter.
+    """
+    try:
+        print(f"Request method: {request.method}")
+        print(f"Request headers: {dict(request.headers)}")
+        print(f"Request data: {request.data}")
+        print(f"Request FILES: {request.FILES}")
+        
+        # Handle file upload
+        csv_file = request.FILES.get('csv_file')
+        if not csv_file:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'No CSV file provided'
+            }, status=400)
+
+        # Get update_existing parameter
+        update_existing = request.data.get('update_existing', 'false').lower() == 'true'
+
+        # Read CSV file
+        df = pd.read_csv(csv_file)
+        
+        # Convert boolean columns
+        df['HasCrCard'] = df['HasCrCard'].astype(bool)
+        df['IsActiveMember'] = df['IsActiveMember'].astype(bool)
+        df['Exited'] = df['Exited'].astype(bool)
+
+        # Prepare data for bulk create/update
+        records = []
+        skipped = []
+        updated = []
+        created = []
+
+        with transaction.atomic():
+            for _, row in df.iterrows():
+                customer_data = {
+                    'customer_id': row['CustomerId'],
+                    'row_number': row['RowNumber'],
+                    'surname': row['Surname'],
+                    'credit_score': row['CreditScore'],
+                    'geography': row['Geography'],
+                    'gender': row['Gender'],
+                    'age': row['Age'],
+                    'tenure': row['Tenure'],
+                    'balance': row['Balance'],
+                    'num_of_products': row['NumOfProducts'],
+                    'has_cr_card': row['HasCrCard'],
+                    'is_active_member': row['IsActiveMember'],
+                    'estimated_salary': row['EstimatedSalary'],
+                    'exited': row['Exited']
+                }
+
+                # Check if customer exists
+                existing_customer = CustomerChurn.objects.filter(customer_id=customer_data['customer_id']).first()
+                
+                if existing_customer:
+                    if update_existing:
+                        for key, value in customer_data.items():
+                            setattr(existing_customer, key, value)
+                        existing_customer.save()
+                        updated.append(customer_data['customer_id'])
+                    else:
+                        skipped.append(customer_data['customer_id'])
+                else:
+                    records.append(CustomerChurn(**customer_data))
+                    created.append(customer_data['customer_id'])
+
+            # Bulk create new records
+            if records:
+                CustomerChurn.objects.bulk_create(records)
+
+        response_data = {
+            'status': 'success',
+            'created': len(created),
+            'updated': len(updated),
+            'skipped': len(skipped),
+            'details': {
+                'created_ids': created,
+                'updated_ids': updated,
+                'skipped_ids': skipped
+            }
+        }
+        print(f"Response data: {response_data}")
+        return JsonResponse(response_data)
+
+    except Exception as e:
+        error_response = {
+            'status': 'error',
+            'message': str(e),
+            'details': traceback.format_exc()
+        }
+        print(f"Error response: {error_response}")
+        return JsonResponse(error_response, status=400)

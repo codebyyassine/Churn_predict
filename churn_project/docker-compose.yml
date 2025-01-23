@@ -41,9 +41,9 @@ services:
       POSTGRES_DB: churn_db
     ports:
       - "5439:5432"
-    volumes:
+    # volumes:
       # Mount the init folder containing .sql scripts and the CSV
-      - ./init:/docker-entrypoint-initdb.d
+      # - ./init:/docker-entrypoint-initdb.d
 
   redis:
     image: redis:latest

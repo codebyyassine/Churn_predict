@@ -24,4 +24,13 @@ class CustomerChurnSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomerChurn
         fields = '__all__'
-        read_only_fields = ('customer_id',) 
+        read_only_fields = ('customer_id',)
+
+class CSVImportSerializer(serializers.Serializer):
+    csv_file = serializers.FileField()
+    update_existing = serializers.BooleanField(default=False)
+
+    def validate_csv_file(self, value):
+        if not value.name.endswith('.csv'):
+            raise serializers.ValidationError("Only CSV files are allowed.")
+        return value 
