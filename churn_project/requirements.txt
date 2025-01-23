@@ -18,3 +18,4 @@ plotly
 ipykernel
 jupyter
 django-cors-headers==4.3.1
+requests==2.31.0

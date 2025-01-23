@@ -16,12 +16,12 @@ from django.core.management import call_command
 from rest_framework import viewsets, permissions, status, filters
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet, NumberFilter
 from django.contrib.auth.models import User
-from .models import CustomerChurn, ChurnRiskHistory
-from .serializers import UserSerializer, CustomerChurnSerializer, CSVImportSerializer
+from .models import CustomerChurn, ChurnRiskHistory, AlertConfiguration, AlertHistory
+from .serializers import UserSerializer, CustomerChurnSerializer, CSVImportSerializer, AlertConfigurationSerializer, AlertHistorySerializer
 from django.shortcuts import get_object_or_404
 import joblib
 import traceback
-from django.db.models import Count, Avg, Q, F
+from django.db.models import Count, Avg, Q, F, Max
 from pathlib import Path
 from django.utils import timezone
 from django.db import transaction
@@ -51,20 +51,30 @@ def get_model_components():
     try:
         model_data = load_latest_model()
         
-        # Load metrics separately
-        models_dir = Path(settings.BASE_DIR) / "models"
-        latest_metrics_path = models_dir / "latest_metrics.json"
-        
-        with open(latest_metrics_path, 'r') as f:
-            metrics_data = json.load(f)
-        
-        return {
+        # Initialize components dictionary with model data
+        components = {
             'model': model_data['model'],
             'scaler': model_data['scaler'],
             'label_encoder_geo': model_data['label_encoder_geo'],
             'label_encoder_gender': model_data['label_encoder_gender'],
-            'feature_importance': metrics_data['feature_importance']
+            'feature_importance': {}  # Default empty dict for feature importance
         }
+        
+        # Try to load metrics if available
+        try:
+            models_dir = Path(settings.BASE_DIR) / "models"
+            latest_metrics_path = models_dir / "latest_metrics.json"
+            
+            if latest_metrics_path.exists():
+                with open(latest_metrics_path, 'r') as f:
+                    metrics_data = json.load(f)
+                components['feature_importance'] = metrics_data.get('feature_importance', {})
+        except Exception as metrics_error:
+            print(f"Warning: Could not load metrics file: {str(metrics_error)}")
+            # Continue without metrics
+        
+        return components
+        
     except Exception as e:
         print(f"Error loading model components: {str(e)}")
         print(f"Traceback: {traceback.format_exc()}")
@@ -764,3 +774,343 @@ def import_csv(request):
         }
         print(f"Error response: {error_response}")
         return JsonResponse(error_response, status=400)
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAdminUser])
+def manage_alert_config(request):
+    """
+    GET: Retrieve current alert configuration
+    POST: Update alert configuration
+    """
+    try:
+        config = AlertConfiguration.objects.first()
+        
+        if request.method == 'POST':
+            try:
+                data = request.data
+                print(f"Received POST data: {data}")  # Debug log
+                
+                if config:
+                    serializer = AlertConfigurationSerializer(config, data=data)
+                else:
+                    serializer = AlertConfigurationSerializer(data=data)
+                
+                if serializer.is_valid():
+                    config = serializer.save()
+                    # Update settings
+                    if not hasattr(settings, 'DISCORD_ALERTS'):
+                        settings.DISCORD_ALERTS = {}
+                    
+                    settings.DISCORD_WEBHOOK_URL = config.webhook_url
+                    settings.DISCORD_ALERTS['ENABLED'] = config.is_enabled
+                    settings.DISCORD_ALERTS['HIGH_RISK_THRESHOLD'] = config.high_risk_threshold
+                    settings.DISCORD_ALERTS['RISK_INCREASE_THRESHOLD'] = config.risk_increase_threshold
+                    
+                    print(f"Config updated successfully: {serializer.data}")  # Debug log
+                    return Response(serializer.data)
+                
+                print(f"Validation errors: {serializer.errors}")  # Debug log
+                return Response(
+                    {
+                        'error': 'Validation failed',
+                        'details': serializer.errors
+                    }, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            except Exception as e:
+                print(f"Error processing POST request: {str(e)}")  # Debug log
+                print(f"Traceback: {traceback.format_exc()}")  # Debug log
+                return Response(
+                    {
+                        'error': 'Failed to process request',
+                        'details': str(e)
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        # GET request
+        try:
+            if config:
+                serializer = AlertConfigurationSerializer(config)
+                return Response(serializer.data)
+            return Response({})
+        except Exception as e:
+            print(f"Error processing GET request: {str(e)}")  # Debug log
+            print(f"Traceback: {traceback.format_exc()}")  # Debug log
+            return Response(
+                {
+                    'error': 'Failed to retrieve configuration',
+                    'details': str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+    except Exception as e:
+        print(f"Unexpected error in manage_alert_config: {str(e)}")  # Debug log
+        print(f"Traceback: {traceback.format_exc()}")  # Debug log
+        return Response(
+            {
+                'error': 'An unexpected error occurred',
+                'details': str(e)
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAdminUser])
+def get_alert_history(request):
+    """
+    Get alert history with filtering options:
+    - alert_type
+    - customer_id
+    - date_from
+    - date_to
+    - success_only
+    """
+    try:
+        queryset = AlertHistory.objects.all()
+        
+        # Apply filters
+        alert_type = request.query_params.get('alert_type')
+        customer_id = request.query_params.get('customer_id')
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        success_only = request.query_params.get('success_only')
+        
+        if alert_type:
+            queryset = queryset.filter(alert_type=alert_type)
+        if customer_id:
+            queryset = queryset.filter(customer_id=customer_id)
+        if date_from:
+            queryset = queryset.filter(sent_at__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(sent_at__lte=date_to)
+        if success_only:
+            queryset = queryset.filter(was_sent=True)
+            
+        # Apply pagination
+        paginator = StandardResultsSetPagination()
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
+        
+        serializer = AlertHistorySerializer(paginated_queryset, many=True)
+        return paginator.get_paginated_response(serializer.data)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAdminUser])
+def get_alert_stats(request):
+    """
+    Get alert statistics:
+    - Total alerts sent
+    - Alerts by type
+    - Success rate
+    - Recent failures
+    """
+    try:
+        total_alerts = AlertHistory.objects.count()
+        successful_alerts = AlertHistory.objects.filter(was_sent=True).count()
+        
+        # Alerts by type
+        alerts_by_type = AlertHistory.objects.values('alert_type').annotate(
+            total=Count('id'),
+            successful=Count('id', filter=Q(was_sent=True))
+        )
+        
+        # Recent failures
+        recent_failures = AlertHistory.objects.filter(
+            was_sent=False,
+            sent_at__gte=timezone.now() - timezone.timedelta(days=1)
+        ).order_by('-sent_at')[:5]
+        
+        return Response({
+            'total_alerts': total_alerts,
+            'successful_alerts': successful_alerts,
+            'success_rate': (successful_alerts / total_alerts * 100) if total_alerts > 0 else 0,
+            'alerts_by_type': alerts_by_type,
+            'recent_failures': AlertHistorySerializer(recent_failures, many=True).data
+        })
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAdminUser])
+def get_risk_dashboard(request):
+    """
+    Get dashboard data for high-risk customers and risk changes:
+    - High risk customers (current)
+    - Recent risk changes
+    - Risk trend over time
+    - Risk distribution
+    """
+    try:
+        # Get configuration
+        config = AlertConfiguration.objects.first()
+        high_risk_threshold = config.high_risk_threshold if config else 0.7
+        risk_increase_threshold = config.risk_increase_threshold if config else 20.0
+
+        # Get latest timestamp for each customer
+        latest_records = ChurnRiskHistory.objects.filter(
+            timestamp__gte=timezone.now() - timezone.timedelta(days=7)
+        ).values('customer').annotate(
+            latest_timestamp=Max('timestamp')
+        )
+
+        # Get current high risk customers (only latest record per customer)
+        high_risk_customers = ChurnRiskHistory.objects.filter(
+            is_high_risk=True,
+            timestamp__gte=timezone.now() - timezone.timedelta(days=7)
+        ).select_related('customer').filter(
+            timestamp__in=[record['latest_timestamp'] for record in latest_records]
+        ).order_by('-churn_probability')[:10]
+
+        # Get significant risk increases (only latest record per customer)
+        significant_increases = ChurnRiskHistory.objects.filter(
+            risk_change__gte=risk_increase_threshold,
+            timestamp__gte=timezone.now() - timezone.timedelta(days=7)
+        ).select_related('customer').filter(
+            timestamp__in=[record['latest_timestamp'] for record in latest_records]
+        ).order_by('-timestamp')[:10]
+
+        # Get risk distribution (using latest records only)
+        risk_distribution = ChurnRiskHistory.objects.filter(
+            timestamp__in=[record['latest_timestamp'] for record in latest_records]
+        ).aggregate(
+            very_high=Count('id', filter=Q(churn_probability__gte=0.8)),
+            high=Count('id', filter=Q(churn_probability__range=(0.6, 0.8))),
+            medium=Count('id', filter=Q(churn_probability__range=(0.4, 0.6))),
+            low=Count('id', filter=Q(churn_probability__range=(0.2, 0.4))),
+            very_low=Count('id', filter=Q(churn_probability__lt=0.2))
+        )
+
+        # Get daily average risk trend
+        daily_risk_trend = ChurnRiskHistory.objects.filter(
+            timestamp__gte=timezone.now() - timezone.timedelta(days=30)
+        ).values('timestamp__date').annotate(
+            avg_risk=Avg('churn_probability'),
+            high_risk_count=Count('id', filter=Q(is_high_risk=True))
+        ).order_by('timestamp__date')
+
+        return Response({
+            'high_risk_customers': [{
+                'customer_id': h.customer.customer_id,
+                'customer_name': h.customer.surname,
+                'probability': h.churn_probability,
+                'risk_change': h.risk_change,
+                'last_updated': h.timestamp
+            } for h in high_risk_customers],
+            
+            'significant_increases': [{
+                'customer_id': h.customer.customer_id,
+                'customer_name': h.customer.surname,
+                'probability': h.churn_probability,
+                'risk_change': h.risk_change,
+                'previous_probability': h.previous_probability,
+                'changed_at': h.timestamp
+            } for h in significant_increases],
+            
+            'risk_distribution': risk_distribution,
+            
+            'risk_trend': [{
+                'date': item['timestamp__date'],
+                'avg_risk': item['avg_risk'],
+                'high_risk_count': item['high_risk_count']
+            } for item in daily_risk_trend],
+            
+            'thresholds': {
+                'high_risk': high_risk_threshold,
+                'risk_increase': risk_increase_threshold
+            }
+        })
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAdminUser])
+def trigger_monitoring(request):
+    """
+    Manually trigger the customer churn monitoring task.
+    This will:
+    1. Calculate churn probabilities for all customers
+    2. Track risk changes
+    3. Send alerts if configured
+    """
+    try:
+        from .tasks import monitor_customer_churn
+        
+        try:
+            # Load model components first to validate
+            components = get_model_components()
+            if not components:
+                return Response(
+                    {
+                        'status': 'error',
+                        'message': 'Model components not available. Please train the model first.'
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            print("Starting manual monitoring task...")  # Debug log
+            
+            # Run the monitoring task synchronously for immediate feedback
+            result = monitor_customer_churn()
+            print(f"Monitoring task result: {result}")  # Debug log
+            
+            # Parse the result message
+            if isinstance(result, str):
+                if "Error" in result:
+                    print(f"Monitoring task error: {result}")  # Debug log
+                    return Response(
+                        {
+                            'status': 'error',
+                            'message': result
+                        },
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                else:
+                    print("Monitoring task completed successfully")  # Debug log
+                    return Response({
+                        'status': 'success',
+                        'message': result
+                    })
+            else:
+                print(f"Unexpected result type: {type(result)}")  # Debug log
+                return Response({
+                    'status': 'success',
+                    'message': str(result)
+                })
+            
+        except ImportError as e:
+            print(f"Import error: {str(e)}")  # Debug log
+            return Response(
+                {
+                    'status': 'error',
+                    'message': 'Failed to import required components',
+                    'details': str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+    except Exception as e:
+        print(f"Error triggering monitoring: {str(e)}")  # Debug log
+        print(f"Traceback: {traceback.format_exc()}")  # Debug log
+        return Response(
+            {
+                'status': 'error',
+                'message': f'Failed to trigger monitoring: {str(e)}',
+                'details': traceback.format_exc()
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

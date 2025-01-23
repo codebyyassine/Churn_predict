@@ -16,11 +16,18 @@ urlpatterns = [
     path('model-metrics/', views.get_model_metrics, name='model_metrics'),
     path('dashboard/stats/', views.get_dashboard_stats, name='dashboard-stats'),
     path('risk/monitoring/', views.get_risk_monitoring, name='risk-monitoring'),
+    path('risk/monitor/trigger/', views.trigger_monitoring, name='trigger-monitoring'),
+    path('risk/dashboard/', views.get_risk_dashboard, name='risk-dashboard'),
     
     # Bulk operations
     path('customers/bulk/create/', views.bulk_create_customers, name='bulk_create_customers'),
     path('customers/bulk/update/', views.bulk_update_customers, name='bulk_update_customers'),
     path('customers/bulk/delete/', views.bulk_delete_customers, name='bulk_delete_customers'),
+    
+    # Alerts
+    path('alerts/config/', views.manage_alert_config, name='manage_alert_config'),
+    path('alerts/history/', views.get_alert_history, name='get_alert_history'),
+    path('alerts/stats/', views.get_alert_stats, name='get_alert_stats'),
     
     # Include the router URLs last
     path('', include(router.urls)),

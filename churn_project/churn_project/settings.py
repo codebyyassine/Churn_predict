@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -201,4 +202,12 @@ REST_FRAMEWORK = {
         'anon': '10000/day',
         'user': '100000/day'
     }
+}
+
+# Discord Webhook Configuration
+DISCORD_WEBHOOK_URL = os.environ.get('DISCORD_WEBHOOK_URL', '')
+DISCORD_ALERTS = {
+    'HIGH_RISK_THRESHOLD': 0.7,  # Probability threshold for high risk
+    'RISK_INCREASE_THRESHOLD': 20.0,  # Percentage increase threshold
+    'ENABLED': True,  # Enable/disable alerts
 }

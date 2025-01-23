@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import CustomerChurn
+from .models import CustomerChurn, AlertConfiguration, AlertHistory
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -33,4 +33,20 @@ class CSVImportSerializer(serializers.Serializer):
     def validate_csv_file(self, value):
         if not value.name.endswith('.csv'):
             raise serializers.ValidationError("Only CSV files are allowed.")
-        return value 
+        return value
+
+class AlertConfigurationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AlertConfiguration
+        fields = ['id', 'webhook_url', 'is_enabled', 'high_risk_threshold', 
+                 'risk_increase_threshold', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+class AlertHistorySerializer(serializers.ModelSerializer):
+    customer_name = serializers.CharField(source='customer.surname', read_only=True)
+    
+    class Meta:
+        model = AlertHistory
+        fields = ['id', 'customer', 'customer_name', 'alert_type', 'message', 
+                 'sent_at', 'was_sent', 'error_message']
+        read_only_fields = ['sent_at', 'was_sent', 'error_message'] 

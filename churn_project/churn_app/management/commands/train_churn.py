@@ -94,6 +94,10 @@ class Command(BaseCommand):
         if "gender" in df.columns:
             df["gender"] = le_gender.fit_transform(df["gender"])
 
+        # Ensure consistent feature order
+        feature_cols = numerical_features + categorical_features
+        df = df[feature_cols + ["exited"]]  # Reorder columns to match prediction order
+
         # 7. Separate features and target
         if "exited" not in df.columns:
             self.stdout.write(self.style.ERROR("No 'exited' column found in data."))
