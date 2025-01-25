@@ -46,7 +46,7 @@ Notebook&Data/
 ###  Docker Setup
 ```bash
 # Clone the repository
-git clone https://github.com/codebyyassine/churn-prediction.git
+git clone https://github.com/codebyyassine/Churn_predict.git
 cd churn-prediction/churn_project
 # Build shared image
 docker compose build migrations
