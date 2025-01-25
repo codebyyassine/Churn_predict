@@ -31,7 +31,7 @@ services:
 
   frontend:
     build:
-      context: ../churn-prediction-frontend
+      context: ./churn-prediction-frontend
       dockerfile: Dockerfile
     container_name: churn_frontend
     ports:
