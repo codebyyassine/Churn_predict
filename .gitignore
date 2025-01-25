@@ -2,3 +2,10 @@ venv/
 __pycache__/
 front/node_modules/
 churn_project/mlruns/*
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+terraform.tfvars

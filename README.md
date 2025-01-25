@@ -1,161 +1,76 @@
-# Customer Churn Prediction Application
+# Customer Churn Prediction System
 
-A full-stack web application for predicting and analyzing customer churn using machine learning.
+A machine learning system that predicts customer churn risk and provides real-time monitoring.
 
-## Features
+## Key Features
 
-### Authentication & Authorization
-- Secure login system with protected routes
-- Role-based access control for admin features
-- Session management with automatic redirects
+- Machine Learning-based Churn Prediction
+- Real-time Monitoring Dashboard
+- Customer Data Management
+- Risk Analysis and Trends
+- Automated Discord Alerts
+- Model Performance Monitoring
+- High-Risk Customer Detection
 
-### Dashboard
-- Real-time analytics dashboard with key metrics:
-  - Total customers and active customer percentage
-  - Current churn rate with number of churned customers
-  - Average credit score and customer age
-  - Average balance statistics
-- Interactive visualizations:
-  - Customer distribution by geography (horizontal bar chart)
-  - Churn rate by geography with precise percentages
-  - Product distribution analysis
+## Technology Stack
 
-### Customer Management
-- Comprehensive customer list with pagination
-- Advanced filtering capabilities:
-  - Geography filter
-  - Age range
-  - Credit score range
-  - Balance range
-  - Active/Inactive status
-- Search functionality
-- Sorting by multiple fields
-- Bulk operations support
-- Individual customer operations:
-  - View details
-  - Edit information
-  - Delete records
-  - Predict churn risk
-
-### Churn Prediction
-- Individual customer churn prediction
-- Real-time prediction results
-- Confidence scores and risk levels
-- Feature importance visualization
-- Asynchronous processing for large prediction batches
-
-### Admin Panel
-- Model management:
-  - Trigger model retraining
-  - View training metrics and performance
-  - Monitor model status
-  - Background processing with Celery
-- User management:
-  - View registered users
-  - Add new users
-  - Manage permissions
-
-## Technical Stack
-
-### Frontend
-- Next.js 13+ with App Router
-- TypeScript for type safety
-- Tailwind CSS for styling
-- Shadcn UI components
-- Recharts for data visualization
-- React Hook Form with Zod validation
-- Responsive design with mobile support
-
-### Backend
+**Backend**
 - Django REST Framework
-- PostgreSQL database
-- Random Forest model for predictions
-- Django Filter for advanced querying
-- JWT authentication
-- RESTful API endpoints with pagination
-- Celery for asynchronous task processing (model training and predictions)
-- Redis as message broker and result backend
+- PostgreSQL Database
+- Redis & Celery
+- MLflow & Scikit-learn
 
-### API Endpoints
-- `/api/customers/` - Customer management (GET, POST, PUT, DELETE)
-- `/api/predict/` - Churn prediction endpoint
-- `/api/dashboard/stats/` - Dashboard statistics
-- `/api/train/` - Model training endpoint (async with Celery)
-- `/api/users/` - User management
+**Frontend**
+- Next.js 13+ with TypeScript
+- Tailwind CSS & Shadcn UI
+- TanStack Query
 
-## Getting Started
+**Infrastructure**
+- Docker Containerization
 
-### Prerequisites
-- Node.js 16+
-- Python 3.8+
-- Docker and Docker Compose
-- Redis (included in Docker setup)
+## Setup Options
 
-### Installation
-
-1. Clone the repository:
+###  Docker Setup
 ```bash
-git clone [repository-url]
+# Clone the repository
+git clone https://github.com/codebyyassine/churn-prediction.git
+cd churn-prediction
+
+# Start all services
+docker-compose up -d
 ```
 
-2. Start the backend services (includes Django, PostgreSQL, Redis, and Celery workers):
-```bash
-docker compose up -d
+The following services will be available:
+- Frontend: http://localhost:3000
+- API: http://localhost:8000/api/
+
+Default admin credentials:
+- Username: root
+- Password: root
+
+## Project Structure
+```
+churn_project/          # Django Backend
+├── churn_app/         # Core Application
+├── api/              # REST API
+└── ml/               # ML Pipeline
+churn-prediction-frontend/  # Next.js Frontend
+data/                  # Data Files
+models/               # ML Models
+docs/                 # Documentation
 ```
 
-3. Verify Celery worker status:
-```bash
-docker compose logs celery
-```
+## Documentation
+- [Architecture Overview](docs/ARCHITECTURE.md)
+- [API Documentation](docs/API.md)
+- [ML Pipeline](docs/ML_PIPELINE.md)
+- [Frontend Guide](docs/FRONTEND.md)
+- [Deployment Guide](docs/DEPLOYMENT.md)
 
-4. Install frontend dependencies:
-```bash
-cd front
-npm install
-```
-
-5. Start the development server:
-```bash
-npm run dev
-```
-
-The application will be available at `http://localhost:3000`
-
-### Database Migration
-
-1. Apply migrations:
-```bash
-# Apply migrations for each app separately, excluding churn_app
-docker compose exec web python manage.py migrate auth
-docker compose exec web python manage.py migrate admin
-docker compose exec web python manage.py migrate contenttypes
-docker compose exec web python manage.py migrate sessions
-
-# Mark churn_app migrations as applied without running them
-docker compose exec web python manage.py migrate churn_app --fake
-```
-
-### Create Superuser
-
-Create an admin user to access the admin panel:
-```bash
-docker compose exec web python manage.py createsuperuser
-```
-Follow the prompts to set username, email, and password.
-
-## Usage
-
-1. Login with your credentials
-2. Navigate through the application using the navigation bar
-3. Access different features based on your role:
-   - Regular users: Dashboard, Customer Management, Churn Prediction
-   - Admin users: Additional access to Admin Panel
-4. Note: Long-running operations like model training are processed in the background
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a new Pull Request
+## Acknowledgments
+- [Scikit-learn](https://scikit-learn.org/) - Machine Learning
+- [MLflow](https://mlflow.org/) - ML Lifecycle
+- [Next.js](https://nextjs.org/) - Frontend Framework
+- [Django REST Framework](https://www.django-rest-framework.org/) - API
+- [Shadcn UI](https://ui.shadcn.com/) - UI Components
+- [Kaggle](https://www.kaggle.com/datasets/gauravtopre/bank-customer-churn-dataset) - Dataset

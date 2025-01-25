@@ -1,5 +1,37 @@
 version: '3.8'
 services:
+  migrations:
+    build: .
+    container_name: churn_migrations
+    command: sh -c "python manage.py makemigrations && python manage.py migrate"
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+
+  createadmin:
+    build: .
+    container_name: churn_createadmin
+    command: sh -c "echo \"from django.contrib.auth import get_user_model; User = get_user_model(); User.objects.create_superuser('root', 'admin@example.com', 'root') if not User.objects.filter(username='root').exists() else None\" | python manage.py shell"
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - migrations
+
+  frontend:
+    build:
+      context: ../churn-prediction-frontend
+      dockerfile: Dockerfile
+    container_name: churn_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - web
+      - createadmin
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+
   web:
     build: .
     container_name: churn_web
@@ -11,6 +43,8 @@ services:
     depends_on:
       - db
       - redis
+      - createadmin
+      - migrations
 
   celery:
     build: .
