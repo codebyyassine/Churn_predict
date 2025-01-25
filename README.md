@@ -34,9 +34,10 @@ A machine learning system that predicts customer churn risk and provides real-ti
 ```bash
 # Clone the repository
 git clone https://github.com/codebyyassine/churn-prediction.git
-cd churn-prediction
-
-# Start all services
+cd churn-prediction/churn_project
+# Build shared image
+docker compose build migrations
+# then Start all services to complete the setup
 docker-compose up -d
 ```
 
@@ -50,22 +51,18 @@ Default admin credentials:
 
 ## Project Structure
 ```
-churn_project/          # Django Backend
+ML_project/          # Django Backend
 ├── churn_app/         # Core Application
-├── api/              # REST API
-└── ml/               # ML Pipeline
-churn-prediction-frontend/  # Next.js Frontend
-data/                  # Data Files
-models/               # ML Models
-docs/                 # Documentation
-```
+├── churn_project/     # Django Backend
+├── churn-prediction-frontend/  # Next.js Frontend
+├── mlruns/             # ML Runs
+├── models/            # ML Models
 
-## Documentation
-- [Architecture Overview](docs/ARCHITECTURE.md)
-- [API Documentation](docs/API.md)
-- [ML Pipeline](docs/ML_PIPELINE.md)
-- [Frontend Guide](docs/FRONTEND.md)
-- [Deployment Guide](docs/DEPLOYMENT.md)
+Notebook&Data/
+├──model_making.ipynb 
+├──notebooks.ipynb
+├──Churn_modelling.csv
+```
 
 ## Acknowledgments
 - [Scikit-learn](https://scikit-learn.org/) - Machine Learning
