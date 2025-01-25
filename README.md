@@ -28,27 +28,6 @@ A machine learning system that predicts customer churn risk and provides real-ti
 **Infrastructure**
 - Docker Containerization
 
-## Setup Options
-
-###  Docker Setup
-```bash
-# Clone the repository
-git clone https://github.com/codebyyassine/churn-prediction.git
-cd churn-prediction/churn_project
-# Build shared image
-docker compose build migrations
-# then Start all services to complete the setup
-docker-compose up -d
-```
-
-The following services will be available:
-- Frontend: http://localhost:3000
-- API: http://localhost:8000/api/
-
-Default admin credentials:
-- Username: root
-- Password: root
-
 ## Project Structure
 ```
 ML_project/          # Django Backend
@@ -64,6 +43,36 @@ Notebook&Data/
 ├──Churn_modelling.csv
 ```
 
+###  Docker Setup
+```bash
+# Clone the repository
+git clone https://github.com/codebyyassine/churn-prediction.git
+cd churn-prediction/churn_project
+# Build shared image
+docker compose build migrations
+# then Start all services to complete the setup
+docker-compose up -d
+```
+## Post-Setup Instructions
+
+After the first successful run:
+
+1. Access the application at http://localhost:3000/login
+2. Login with the default admin credentials:
+   - Username: `root`
+   - Password: `root`
+
+3. Navigate to the Admin Panel
+4. Import the initial dataset:
+   - Locate `Notebook&Data/Churn_Modelling.csv` in your project directory
+   - Use the import functionality in the Admin Panel to upload the file
+
+
+## API Documentation
+
+API documentation is available at http://localhost:8000/api/docs/
+
+
 ## Acknowledgments
 - [Scikit-learn](https://scikit-learn.org/) - Machine Learning
 - [MLflow](https://mlflow.org/) - ML Lifecycle
@@ -71,3 +80,5 @@ Notebook&Data/
 - [Django REST Framework](https://www.django-rest-framework.org/) - API
 - [Shadcn UI](https://ui.shadcn.com/) - UI Components
 - [Kaggle](https://www.kaggle.com/datasets/gauravtopre/bank-customer-churn-dataset) - Dataset
+
+
