@@ -30,7 +30,7 @@ A machine learning system that predicts customer churn risk and provides real-ti
 
 ## Project Structure
 ```
-ML_project/          # Django Backend
+churn_project/          # Django Backend
 ├── churn_app/         # Core Application
 ├── churn_project/     # Django Backend
 ├── churn-prediction-frontend/  # Next.js Frontend
